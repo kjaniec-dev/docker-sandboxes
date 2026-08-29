@@ -1,0 +1,56 @@
+schemaVersion: "2"
+kind: mixin
+name: codex-sbx
+version: "1.0.0"
+displayName: Codex SBX
+description: Development defaults for Codex in Docker Sandboxes
+
+requires:
+  agent: codex
+
+permissions:
+  network:
+    allow:
+      - github.com
+      - api.github.com
+      - raw.githubusercontent.com
+      - objects.githubusercontent.com
+      - codeload.github.com
+      - registry.npmjs.org
+      - nodejs.org
+      - go.dev
+      - proxy.golang.org
+      - sum.golang.org
+      - pypi.org
+      - files.pythonhosted.org
+      - astral.sh
+      - mcp.context7.com
+      - cdn.playwright.dev
+      - playwright.download.prss.microsoft.com
+      - api.openai.com
+      - auth.openai.com
+      - chatgpt.com
+      - platform.openai.com
+
+agentInstructions:
+  content: |
+    This sandbox directly mounts the host Git repository read/write.
+
+    Worktree rules:
+    - Use project-local `.worktrees/`.
+    - Verify `.worktrees/` is ignored by Git before creating a worktree.
+    - Prefer native worktree capability when available; otherwise use `git worktree`.
+    - Never create a sibling worktree outside the mounted repository.
+    - When switching into a worktree, activate that worktree path in Serena before semantic reads or edits.
+    - When returning to the primary checkout, reactivate the primary checkout in Serena.
+
+    Public repository safety:
+    - Do not commit credentials, API keys, tokens, agent session state or machine-specific paths.
+    - Keep generated images, caches and local configuration out of version control.
+
+    Tooling rules:
+    - Use project-local package-manager, lint, formatting and test versions when the repository defines them.
+    - Verify changes with the project-relevant checks before reporting completion.
+    - Use the preinstalled `playwright-cli` for browser automation, screenshots and frontend validation when a runnable local frontend exists.
+    - Prefer a repository's own Playwright scripts and configuration when it defines them; otherwise run `playwright-cli` directly.
+    - Use the preinstalled OpenJDK 25, Maven and Gradle for Java projects.

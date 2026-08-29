@@ -1,0 +1,22 @@
+# Generated Docker Sandbox exports
+.build/
+
+# Local operating-system and editor files
+.DS_Store
+.idea/
+
+# Project-local agent worktrees
+.worktrees/
+
+# Local environment and credential files
+.env
+.env.*
+!.env.example
+!.env.*.example
+.claude/settings.local.json
+.codex/auth.json
+.codex/history.jsonl
+.codex/log/
+.codex/sessions/
+.playwright/.cache/
+.serena/project.local.yml

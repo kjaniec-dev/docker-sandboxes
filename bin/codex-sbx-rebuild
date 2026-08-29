@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+BUILD_DIR="$ROOT/.build"
+IMAGE="codex-sbx:local"
+TAR="$BUILD_DIR/codex-sbx.tar"
+mkdir -p "$BUILD_DIR"
+docker build -t "$IMAGE" -f "$ROOT/harnesses/codex/Dockerfile" "$ROOT"
+docker image save "$IMAGE" -o "$TAR"
+if sbx template ls | grep -Fq "$IMAGE"; then
+  sbx template rm "$IMAGE"
+fi
+sbx template load "$TAR"
+echo "Loaded Docker Sandbox template: $IMAGE"
