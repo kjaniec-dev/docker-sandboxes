@@ -103,8 +103,9 @@ MCP servers in `~/.gemini/config/mcp_config.json`. Bootstrap will:
 - ensure managed MCP entries in `~/.gemini/config/mcp_config.json`:
   `serena` (stdio, `serena start-mcp-server --context=ide-assistant
   --project-from-cwd`) and `context7` (http,
-  `https://mcp.context7.com/mcp`); missing entries are added with `agy mcp
-  add`; existing entries that conflict with the managed definitions fail
+  `https://mcp.context7.com/mcp`); missing or matching entries are ensured
+  with a managed `jq` merge that writes the exact entries `agy mcp add`
+  produces; existing entries that conflict with the managed definitions fail
   bootstrap before any write, mirroring OpenCode managed-entry semantics;
 - clone/update Superpowers and link each of its skills into
   `~/.gemini/config/skills/`;
