@@ -17,3 +17,10 @@ grep -Fq 'FROM docker/sandbox-templates:opencode-docker' "$ROOT/harnesses/openco
 [[ -x "$ROOT/harnesses/opencode/bin/opencode-sbx" ]]
 [[ -x "$ROOT/harnesses/opencode/scripts/bootstrap.sh" ]]
 [[ -x "$ROOT/harnesses/opencode/scripts/verify.sh" ]]
+grep -Fq 'FROM docker/sandbox-templates:shell-docker' "$ROOT/harnesses/antigravity-cli/Dockerfile"
+grep -Fq 'install-system-toolchain.sh' "$ROOT/harnesses/antigravity-cli/Dockerfile"
+grep -Fq 'install-user-toolchain.sh' "$ROOT/harnesses/antigravity-cli/Dockerfile"
+[[ -f "$ROOT/harnesses/antigravity-cli/kit/spec.yaml" ]]
+[[ -x "$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx" ]]
+[[ -x "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" ]]
+[[ -x "$ROOT/harnesses/antigravity-cli/scripts/verify.sh" ]]
