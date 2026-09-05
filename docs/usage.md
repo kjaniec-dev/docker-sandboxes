@@ -230,7 +230,7 @@ or sandbox identity.
 
 ## Authentication
 
-Authentication is not baked into either image.
+Authentication is not baked into any image.
 
 For Codex, manage host-side credentials with either:
 
