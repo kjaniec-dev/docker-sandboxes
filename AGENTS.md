@@ -1,8 +1,9 @@
 # AGENTS.md
 
-Docker Sandboxes harnesses for Claude Code and Codex on macOS. This is
-infrastructure/tooling, not an application: it builds four sandbox template
-images and launches one deterministic sandbox per target repository and agent.
+Docker Sandboxes harnesses for Claude Code, Codex, OpenCode, and Antigravity
+CLI on macOS. This is infrastructure/tooling, not an application: it builds
+four sandbox template images and launches one deterministic sandbox per target
+repository and agent.
 
 ## Architecture
 
