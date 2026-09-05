@@ -21,12 +21,14 @@ Root commands in `bin/` are thin delegates:
 
 - `claude-sbx` → `harnesses/claude-code/bin/claude-code-sbx`
 - `codex-sbx` → `harnesses/codex/bin/codex-sbx`
+- `antigravity-sbx` → `harnesses/antigravity-cli/bin/antigravity-sbx`
 
-Do not bake Claude plugins, Codex MCP configuration, credentials, or session
-state into either image. Docker Sandboxes recreates agent-managed configuration
-when a sandbox is created. Claude plugins belong in the Claude bootstrap;
-Codex MCP registration, Superpowers, Caveman, and Playwright skills belong in
-the Codex bootstrap.
+Do not bake Claude plugins, Codex/OpenCode/Antigravity MCP configuration,
+credentials, or session state into any image. Docker Sandboxes recreates
+agent-managed configuration when a sandbox is created. Claude plugins belong
+in the Claude bootstrap;
+Codex, OpenCode, and Antigravity MCP registration, Superpowers, Caveman, and
+Playwright skills belong in their respective bootstraps.
 
 Mount model: the target repository is mounted read/write at the same absolute
 path inside its sandbox. When it differs from this repository, this harness
@@ -41,6 +43,7 @@ available.
 - `make rebuild` or `make rebuild-claude` — rebuilds and loads
   `claude-sbx:local`.
 - `make rebuild-codex` — rebuilds and loads `codex-sbx:local`.
+- `make rebuild-antigravity` — rebuilds and loads `antigravity-sbx:local`.
 - `make verify` — runs the Claude verification script. It is intended to run
   inside a sandbox via `sbx exec`, as described in `docs/usage.md`; it will
   fail on the host because sandbox-only tools are absent.
