@@ -33,6 +33,25 @@ else
 fi
 mkdir -p "$HOME/.agents/skills"
 ln -sfn "$superpowers_dir/skills" "$HOME/.agents/skills/superpowers"
+
+CAVEMAN_TAG="v2.2.0"
+CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"
+caveman_dir="$HOME/.codex/caveman"
+if [[ -d "$caveman_dir/.git" ]]; then
+  :
+elif [[ ! -e "$caveman_dir" ]]; then
+  git clone --depth=1 --branch "$CAVEMAN_TAG" \
+    https://github.com/JuliusBrussee/caveman.git "$caveman_dir"
+else
+  echo "Codex bootstrap: refusing to replace non-git $caveman_dir" >&2
+  exit 1
+fi
+if [[ "$(git -C "$caveman_dir" rev-parse HEAD)" != "$CAVEMAN_REVISION" ]]; then
+  echo "Codex bootstrap: unexpected Caveman revision in $caveman_dir" >&2
+  exit 1
+fi
+ln -sfn "$caveman_dir/skills/caveman" "$HOME/.agents/skills/caveman"
+
 playwright-cli install --skills agents --global
 
 mkdir -p "$HOME/.cache/claude-sbx"

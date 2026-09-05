@@ -55,6 +55,7 @@ fi
 
 config="$(opencode debug config)" || { echo "failed to resolve OpenCode config" >&2; exit 1; }
 jq -e '
+  .enabled_providers == ["opencode-go"] and
   .mcp.serena.type == "local" and
   .mcp.context7.type == "remote" and
   .mcp.context7.url == "https://mcp.context7.com/mcp"

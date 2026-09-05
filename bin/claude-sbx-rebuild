@@ -18,7 +18,7 @@ BUILD_DIR="$ROOT/.build"
 IMAGE="claude-sbx:local"
 TAR="$BUILD_DIR/claude-sbx.tar"
 mkdir -p "$BUILD_DIR"
-docker build -t "$IMAGE" -f "$ROOT/harnesses/claude-code/Dockerfile" "$ROOT"
+docker build --pull -t "$IMAGE" -f "$ROOT/harnesses/claude-code/Dockerfile" "$ROOT"
 docker image save "$IMAGE" -o "$TAR"
 if sbx template ls | grep -Fq "$IMAGE"; then
   sbx template rm "$IMAGE"

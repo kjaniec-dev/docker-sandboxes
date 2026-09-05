@@ -122,6 +122,7 @@ ensure_opencode_config() {
     if ! jq '
       . + {
         "$schema": "https://opencode.ai/config.json",
+        "enabled_providers": ["opencode-go"],
         "mcp": ((.mcp // {}) + {
           "serena": {
             "type": "local",
@@ -144,6 +145,7 @@ ensure_opencode_config() {
     if ! jq -n '
       {
         "$schema": "https://opencode.ai/config.json",
+        "enabled_providers": ["opencode-go"],
         "mcp": {
           "serena": {
             "type": "local",

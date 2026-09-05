@@ -6,8 +6,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 grep -Fq 'uv tool install serena-agent' "$ROOT/shared/install-user-toolchain.sh"
 grep -Fq 'https://github.com/obra/superpowers.git' \
   "$ROOT/harnesses/codex/scripts/bootstrap.sh"
+grep -Fq 'CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"' \
+  "$ROOT/harnesses/codex/scripts/bootstrap.sh"
+grep -Fq 'https://github.com/JuliusBrussee/caveman.git' \
+  "$ROOT/harnesses/codex/scripts/bootstrap.sh"
+grep -Fq 'skills/caveman' "$ROOT/harnesses/codex/scripts/bootstrap.sh"
 grep -Fq 'serena' "$ROOT/harnesses/codex/scripts/verify.sh"
 grep -Fq 'superpowers' "$ROOT/harnesses/codex/scripts/verify.sh"
+grep -Fq 'caveman/SKILL.md' "$ROOT/harnesses/codex/scripts/verify.sh"
 grep -Fq 'playwright-cli/SKILL.md' "$ROOT/harnesses/codex/scripts/verify.sh"
 grep -Fq 'playwright-cli' "$ROOT/harnesses/codex/kit/spec.yaml"
 grep -Fq 'playwright-cli install --skills agents --global' \
@@ -37,9 +43,13 @@ chmod +x "$tmp/bin/codex"
 cat >"$tmp/bin/git" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${1:-}" == "-C" && "${3:-}" == "rev-parse" ]]; then
+  printf '%s\n' "$MOCK_CAVEMAN_REVISION"
+  exit 0
+fi
 if [[ "${1:-}" == "clone" ]]; then
   target="${@: -1}"
-  mkdir -p "$target/.git" "$target/skills"
+  mkdir -p "$target/.git" "$target/skills/superpowers" "$target/skills/caveman"
 fi
 MOCK
 chmod +x "$tmp/bin/git"
@@ -50,7 +60,8 @@ printf '%s\n' "$*" >"$MOCK_PLAYWRIGHT_LOG"
 MOCK
 chmod +x "$tmp/bin/playwright-cli"
 
-MOCK_CODEX_LOG="$tmp/codex.log" MOCK_PLAYWRIGHT_LOG="$tmp/playwright.log" \
+MOCK_CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2" \
+  MOCK_CODEX_LOG="$tmp/codex.log" MOCK_PLAYWRIGHT_LOG="$tmp/playwright.log" \
   HOME="$tmp/home" PATH="$tmp/bin:$PATH" \
   bash "$ROOT/harnesses/codex/scripts/bootstrap.sh"
 grep -Fq 'mcp add serena -- serena start-mcp-server --context=codex --project-from-cwd' \
@@ -58,5 +69,6 @@ grep -Fq 'mcp add serena -- serena start-mcp-server --context=codex --project-fr
 grep -Fq 'mcp add context7 --url https://mcp.context7.com/mcp' "$tmp/codex.log"
 grep -Fq 'install --skills agents --global' "$tmp/playwright.log"
 [[ -L "$tmp/home/.agents/skills/superpowers" ]]
+[[ -L "$tmp/home/.agents/skills/caveman" ]]
 
 echo "test_codex_integrations.sh: PASS"

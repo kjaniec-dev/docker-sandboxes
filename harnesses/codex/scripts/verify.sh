@@ -10,6 +10,7 @@ for cmd in "${required_commands[@]}"; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing command: $cmd" >&2; exit 1; }
 done
 [[ -d "$HOME/.agents/skills/superpowers" ]] || { echo "missing Codex skill: superpowers" >&2; exit 1; }
+[[ -f "$HOME/.agents/skills/caveman/SKILL.md" ]] || { echo "missing Codex skill: caveman" >&2; exit 1; }
 [[ -f "$HOME/.agents/skills/playwright-cli/SKILL.md" ]] || { echo "missing Codex skill: playwright-cli" >&2; exit 1; }
 grep -Fq '25.' <<<"$(java --version 2>&1 | head -n1)" || { echo "unexpected Java version: $(java --version 2>&1 | head -n1)" >&2; exit 1; }
 grep -Fq '25.' <<<"$(javac --version)" || { echo "unexpected javac version: $(javac --version)" >&2; exit 1; }
