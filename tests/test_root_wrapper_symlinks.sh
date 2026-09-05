@@ -20,7 +20,8 @@ case "$1 ${2:-}" in
   "template ls")
     printf '%s\n' \
       'docker.io/library/claude-sbx local test claude-code-docker now' \
-      'docker.io/library/codex-sbx local test codex-docker now'
+      'docker.io/library/codex-sbx local test codex-docker now' \
+      'docker.io/library/opencode-sbx local test opencode-docker now'
     exit 0
     ;;
 esac
@@ -36,6 +37,7 @@ chmod +x "$tmp/mock-bin/sbx"
 export MOCK_LOG="$tmp/commands.log"
 ln -s "$ROOT/bin/claude-sbx" "$tmp/claude-sbx"
 ln -s "$ROOT/bin/codex-sbx" "$tmp/codex-sbx"
+ln -s "$ROOT/bin/opencode-sbx" "$tmp/opencode-sbx"
 
 (
   cd "$repo"
@@ -45,6 +47,11 @@ ln -s "$ROOT/bin/codex-sbx" "$tmp/codex-sbx"
   cd "$repo"
   PATH="$tmp/mock-bin:$PATH" "$tmp/codex-sbx"
 )
+(
+  cd "$repo"
+  PATH="$tmp/mock-bin:$PATH" "$tmp/opencode-sbx"
+)
 
 grep -Fq -- "--kit $ROOT/harnesses/claude-code/kit claude $repo $ROOT:ro" "$MOCK_LOG"
 grep -Fq -- "--kit $ROOT/harnesses/codex/kit codex $repo $ROOT:ro" "$MOCK_LOG"
+grep -Fq -- "--kit $ROOT/harnesses/opencode/kit opencode $repo $ROOT:ro" "$MOCK_LOG"
