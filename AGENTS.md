@@ -25,8 +25,8 @@ Root commands in `bin/` are thin delegates:
 Do not bake Claude plugins, Codex MCP configuration, credentials, or session
 state into either image. Docker Sandboxes recreates agent-managed configuration
 when a sandbox is created. Claude plugins belong in the Claude bootstrap;
-Codex MCP registration, Superpowers, and Playwright skills belong in the Codex
-bootstrap.
+Codex MCP registration, Superpowers, Caveman, and Playwright skills belong in
+the Codex bootstrap.
 
 Mount model: the target repository is mounted read/write at the same absolute
 path inside its sandbox. When it differs from this repository, this harness
@@ -66,8 +66,8 @@ available.
 - OpenJDK 25, Maven, and Gradle are present in both templates and verified by
   both verification scripts.
 - Both bootstrap scripts must remain idempotent because they are rerun for
-  existing sandboxes. Caveman is Claude-plugin-only; do not run its standalone
-  hook installer as well.
+  existing sandboxes. Caveman is a Claude plugin and a pinned Codex skill; do
+  not run its standalone hook installer.
 - Root wrappers, harness launchers, and bootstrap scripts use `BASH_SOURCE`
   guards so tests can source them without side effects. Preserve that behavior.
 

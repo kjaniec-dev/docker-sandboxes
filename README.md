@@ -1,15 +1,15 @@
-# Claude and Codex Docker Sandboxes
+# Claude, Codex, and OpenCode Docker Sandboxes
 
-Reusable Docker Sandbox harnesses for Claude Code and Codex. Each harness gives
-the selected Git repository a writable workspace inside its own sandbox while
-the rest of the host stays outside that workspace.
+Reusable Docker Sandbox harnesses for Claude Code, Codex, and OpenCode. Each
+harness gives the selected Git repository a writable workspace inside its own
+sandbox while the rest of the host stays outside that workspace.
 
-Both harnesses provide the same development toolchain: Node.js 24.19.0, Go
+All harnesses provide the same development toolchain: Node.js 24.19.0, Go
 1.26.6, Python and uv, Serena, Docker Engine and Compose, Playwright CLI,
 OpenJDK 25, Maven, Gradle, and common Git, database, shell, and search tools.
 The Codex bootstrap registers Serena and Context7 as MCP servers, installs
-Superpowers into native Codex skill discovery, and installs the Playwright CLI
-skills for Codex.
+Superpowers and Caveman into native Codex skill discovery, and installs the
+Playwright CLI skills for Codex.
 
 ## Quick start
 
@@ -18,6 +18,7 @@ Build the templates from this repository:
 ```bash
 ./bin/claude-sbx-rebuild
 ./bin/codex-sbx-rebuild
+./bin/opencode-sbx-rebuild
 ```
 
 Optionally make the commands available on your `PATH`:
@@ -26,8 +27,10 @@ Optionally make the commands available on your `PATH`:
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$PWD/bin/claude-sbx" "$HOME/.local/bin/claude-sbx"
 ln -sfn "$PWD/bin/codex-sbx" "$HOME/.local/bin/codex-sbx"
+ln -sfn "$PWD/bin/opencode-sbx" "$HOME/.local/bin/opencode-sbx"
 ln -sfn "$PWD/bin/claude-sbx-rebuild" "$HOME/.local/bin/claude-sbx-rebuild"
 ln -sfn "$PWD/bin/codex-sbx-rebuild" "$HOME/.local/bin/codex-sbx-rebuild"
+ln -sfn "$PWD/bin/opencode-sbx-rebuild" "$HOME/.local/bin/opencode-sbx-rebuild"
 ```
 
 Then, from any Git repository, ensure project-local worktrees are ignored and
@@ -38,13 +41,15 @@ grep -qxF '.worktrees/' .gitignore || echo '.worktrees/' >> .gitignore
 claude-sbx
 # or
 codex-sbx
+# or
+opencode-sbx
 ```
 
 The `grep`/`echo` command modifies the target repository's `.gitignore` when
 needed. Review and commit that change in the target repository if appropriate.
 
-The two commands create distinct sandboxes for the same repository, so their
-agent configuration and sessions do not overlap. See [the usage guide](docs/usage.md)
+The harness commands create distinct sandboxes for the same repository, so
+their agent configuration and sessions do not overlap. See [the usage guide](docs/usage.md)
 for authentication, ports, verification, rebuilds, and extension guidance.
 
 ## Security model

@@ -14,6 +14,7 @@ printf '%s\n' '{"model":"existing","mcp":{"custom":{"type":"remote","url":"https
 ensure_opencode_config "$config"
 jq -e '.model == "existing" and .mcp.custom.url == "https://example.test/mcp"' "$config" >/dev/null
 jq -e '.mcp.serena.type == "local" and .mcp.context7.url == "https://mcp.context7.com/mcp"' "$config" >/dev/null
+jq -e '.enabled_providers == ["opencode-go"]' "$config" >/dev/null
 jq -e '.mcp.serena.command == ["serena", "start-mcp-server", "--context=ide-assistant", "--project-from-cwd"] and .mcp.serena.enabled == true and .mcp.context7.enabled == true and .["$schema"] == "https://opencode.ai/config.json"' "$config" >/dev/null
 
 jsonc="$config_dir/opencode.jsonc"
@@ -48,7 +49,7 @@ grep -Fq "conflicting managed MCP entry" "$conflict_output"
 
 missing="$config_dir/missing/config.json"
 ensure_opencode_config "$missing"
-jq -e '.mcp.serena.enabled == true and .mcp.context7.enabled == true' "$missing" >/dev/null
+jq -e '.mcp.serena.enabled == true and .mcp.context7.enabled == true and .enabled_providers == ["opencode-go"]' "$missing" >/dev/null
 
 invalid="$config_dir/invalid.json"
 printf '%s\n' '{invalid json' >"$invalid"
@@ -151,7 +152,8 @@ jq -e '
   .mcp.serena.enabled == true and
   .mcp.context7.type == "remote" and
   .mcp.context7.url == "https://mcp.context7.com/mcp" and
-  .mcp.context7.enabled == true
+  .mcp.context7.enabled == true and
+  .enabled_providers == ["opencode-go"]
 ' "$bootstrap_home/.config/opencode/config.json" >/dev/null
 jq -e '. == {"mcp":{"gateway":{"type":"remote","url":"https://gateway.example.test/mcp"}}}' "$bootstrap_kit_config" >/dev/null
 [[ "$(cksum <"$bootstrap_kit_config")" == "$bootstrap_gateway_before" ]]

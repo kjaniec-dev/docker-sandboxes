@@ -16,6 +16,8 @@ grep -Fq 'mvn --version' "$VERIFY"
 grep -Fq 'gradle --version' "$VERIFY"
 grep -Fq 'docker compose version' "$VERIFY"
 grep -Fq 'opencode debug config' "$VERIFY"
+grep -Fq 'enabled_providers' "$VERIFY"
+grep -Fq 'opencode-go' "$VERIFY"
 grep -Fq 'serena' "$VERIFY"
 grep -Fq 'superpowers' "$VERIFY"
 grep -Fq 'caveman' "$VERIFY"
@@ -66,7 +68,7 @@ for cmd in opencode git gh curl wget ssh rg fd yq fzf make just shellcheck shfmt
 done
 ln -s "$(command -v jq)" "$tmp/bin/jq"
 
-mock_config='{"mcp":{"serena":{"type":"local"},"context7":{"type":"remote","url":"https://mcp.context7.com/mcp"}}}'
+mock_config='{"enabled_providers":["opencode-go"],"mcp":{"serena":{"type":"local"},"context7":{"type":"remote","url":"https://mcp.context7.com/mcp"}}}'
 mock_java_output='openjdk 25.0.1 2025-09-16'
 mock_javac_output='javac 25.0.1'
 mock_fail_command=''
@@ -103,14 +105,14 @@ grep -Fq 'unexpected OpenCode javac version' "$tmp/javac-failure.err"
 grep -Fq 'observed major 125' "$tmp/javac-failure.err"
 
 mock_javac_output='javac 25.0.1'
-mock_config='{"mcp":{"serena":{"type":"local"}}}'
+mock_config='{"enabled_providers":["opencode-go"],"mcp":{"serena":{"type":"local"}}}'
 if run_verify "$tmp/mcp-failure"; then
   echo 'invalid MCP configuration was not detected' >&2
   exit 1
 fi
 grep -Fq 'unexpected OpenCode MCP configuration' "$tmp/mcp-failure.err"
 
-mock_config='{"mcp":{"serena":{"type":"local"},"context7":{"type":"remote","url":"https://mcp.context7.com/mcp"}}}'
+mock_config='{"enabled_providers":["opencode-go"],"mcp":{"serena":{"type":"local"},"context7":{"type":"remote","url":"https://mcp.context7.com/mcp"}}}'
 rm "$tmp/home/.agents/skills/playwright-cli/SKILL.md"
 if run_verify "$tmp/skill-failure"; then
   echo 'missing Playwright skill was not detected' >&2
