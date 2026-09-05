@@ -1,0 +1,1661 @@
+# Antigravity CLI Docker Sandbox Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add Antigravity CLI (`agy`) as a fourth Docker Sandbox harness with the same direct-mount workflow, pinned toolchain, MCP servers, and skills as the existing Claude Code, Codex, and OpenCode harnesses.
+
+**Architecture:** New self-contained harness under `harnesses/antigravity-cli/` (Dockerfile, kit, launcher, bootstrap, verify) plus thin root delegates in `bin/`, Makefile targets, host-side bash tests, and docs. The image extends the neutral `docker/sandbox-templates:shell-docker` base and installs a sha256-pinned Antigravity CLI release tarball.
+
+**Tech Stack:** Bash, Docker, Docker Sandboxes (`sbx`), jq, Antigravity CLI (Go binary).
+
+**Spec:** `docs/superpowers/specs/2026-09-05-antigravity-sbx-design.md`
+
+Work on a new branch (e.g. `feat/antigravity-cli-harness`) or in an isolated worktree per superpowers:using-git-worktrees. All paths are relative to the repository root unless stated otherwise.
+
+## Global Constraints
+
+- Template tag: `antigravity-sbx:local`; sandbox names: `antigravity-<repo-slug>-<8-hex-path-digest>`; bootstrap marker: `/home/agent/.cache/claude-sbx/antigravity-bootstrap-v1`.
+- Antigravity CLI pin: version `1.1.27`, build `5211191891591168`, tarball base `https://storage.googleapis.com/antigravity-public/antigravity-cli/1.1.27-5211191891591168/`; sha256 `f874d4f6b8a73c2df660f580f25fb656fcb6e64adbfd746e6692e837fd9a20be` (`linux-x64/cli_linux_x64.tar.gz`) and `97fc9fe5a6067406cd02cbe4ae6e362c9623a24d33bec486911246c17ceb6a94` (`linux-arm/cli_linux_arm64.tar.gz`).
+- Toolchain pins stay synchronized with the other harnesses: Node `24.19.0`, Go `1.26.6`, OpenJDK `25`; Caveman pin `v2.2.0` revision `9aa63945a349bef17206540650db48c30fafbdf2`.
+- Managed MCP entries (Antigravity format in `~/.gemini/config/mcp_config.json`): `serena` = `{"command":"serena","args":["start-mcp-server","--context=ide-assistant","--project-from-cwd"],"disabled":false}`; `context7` = `{"serverUrl":"https://mcp.context7.com/mcp","disabled":false}`.
+- Antigravity global skill discovery directory: `~/.gemini/config/skills/<name>/`.
+- Launchers must exit `3` when `.worktrees/` is not ignored; all wrappers/scripts keep `BASH_SOURCE` guards so tests can source them without side effects.
+- Bash with `set -euo pipefail`; shellcheck-clean; shfmt-formatted; ASCII only; no comments unless logic is non-obvious.
+- No credentials, session state, machine-specific paths, or generated artifacts in tracked files or images.
+
+---
+
+### Task 1: Probe the sbx agent name on the host
+
+The launcher passes an agent name to `sbx create` and the kit declares `requires.agent`. Docker Sandboxes may reject unregistered agent names. This task fixes the value used by all later tasks.
+
+**Files:**
+- None modified; decision recorded for Task 3 and Task 5.
+
+**Interfaces:**
+- Produces: `AGENT_NAME` decision — either `antigravity` (primary) or `shell` (fallback, with explicit `agy` invocation in `sbx run`).
+
+- [ ] **Step 1: Run the probe on the host (where `sbx` exists)**
+
+```bash
+sbx create --help 2>&1 | head -40
+sbx create --name agy-probe --template docker/sandbox-templates:shell-docker antigravity /tmp 2>&1 | head -5
+sbx rm agy-probe 2>/dev/null || true
+```
+
+- [ ] **Step 2: Record the decision**
+
+If the create command accepts `antigravity` as the agent argument: use `antigravity` everywhere (kit `requires.agent: antigravity`, launcher create arg `antigravity`, `sbx run --name "$name" -- "$@"`).
+
+If it rejects the agent name: use `shell` (kit `requires.agent: shell`, launcher create arg `shell`, and the launcher's final line becomes `exec sbx run --name "$name" -- agy "$@"`).
+
+The remainder of this plan assumes the primary value `antigravity`. When the fallback applies, substitute as described above in Tasks 3, 5, and the lifecycle test in Task 3.
+
+- [ ] **Step 3: No commit** (nothing changed yet)
+
+---
+
+### Task 2: Harness layout test and Dockerfile
+
+**Files:**
+- Modify: `tests/test_harness_layout.sh`
+- Create: `tests/test_antigravity_dockerfile.sh`
+- Create: `harnesses/antigravity-cli/Dockerfile`
+
+**Interfaces:**
+- Produces: `harnesses/antigravity-cli/Dockerfile` building image content from base `docker/sandbox-templates:shell-docker` with pinned `agy` at `/usr/local/bin/agy`; later tasks (rebuild delegate in Task 4) reference this path.
+
+- [ ] **Step 1: Write the failing layout test additions**
+
+Append to `tests/test_harness_layout.sh`:
+
+```bash
+grep -Fq 'FROM docker/sandbox-templates:shell-docker' "$ROOT/harnesses/antigravity-cli/Dockerfile"
+grep -Fq 'install-system-toolchain.sh' "$ROOT/harnesses/antigravity-cli/Dockerfile"
+grep -Fq 'install-user-toolchain.sh' "$ROOT/harnesses/antigravity-cli/Dockerfile"
+[[ -f "$ROOT/harnesses/antigravity-cli/kit/spec.yaml" ]]
+[[ -x "$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx" ]]
+[[ -x "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" ]]
+[[ -x "$ROOT/harnesses/antigravity-cli/scripts/verify.sh" ]]
+```
+
+Create `tests/test_antigravity_dockerfile.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOCKERFILE="$ROOT/harnesses/antigravity-cli/Dockerfile"
+
+grep -Fq 'FROM docker/sandbox-templates:shell-docker' "$DOCKERFILE"
+grep -Fq 'AGY_VERSION=1.1.27' "$DOCKERFILE"
+grep -Fq 'AGY_BUILD=5211191891591168' "$DOCKERFILE"
+grep -Fq 'f874d4f6b8a73c2df660f580f25fb656fcb6e64adbfd746e6692e837fd9a20be' "$DOCKERFILE"
+grep -Fq '97fc9fe5a6067406cd02cbe4ae6e362c9623a24d33bec486911246c17ceb6a94' "$DOCKERFILE"
+grep -Fq 'sha256sum -c' "$DOCKERFILE"
+grep -Fq '/usr/local/bin/agy' "$DOCKERFILE"
+
+awk '
+  /^USER root$/ { root_line = NR }
+  /RUN NODE_VERSION=/ { system_line = NR }
+  /^USER agent$/ { agent_line = NR }
+  END {
+    if (!(root_line && root_line < system_line && agent_line > system_line)) {
+      exit 1
+    }
+  }
+' "$DOCKERFILE" || {
+  echo "Antigravity system installer must run as root before switching to agent" >&2
+  exit 1
+}
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `bash tests/test_harness_layout.sh; bash tests/test_antigravity_dockerfile.sh`
+Expected: FAIL — missing `harnesses/antigravity-cli/Dockerfile`.
+
+- [ ] **Step 3: Create the Dockerfile**
+
+Create `harnesses/antigravity-cli/Dockerfile`:
+
+```dockerfile
+FROM docker/sandbox-templates:shell-docker
+
+ARG NODE_VERSION=24.19.0
+ARG GO_VERSION=1.26.6
+ARG TARGETARCH
+ARG AGY_VERSION=1.1.27
+ARG AGY_BUILD=5211191891591168
+
+USER root
+ENV PATH=/usr/local/go/bin:/home/agent/go/bin:${PATH}
+
+RUN set -eux; \
+    case "$TARGETARCH" in \
+      amd64) \
+        agy_dir="linux-x64"; \
+        agy_file="cli_linux_x64.tar.gz"; \
+        agy_sha256="f874d4f6b8a73c2df660f580f25fb656fcb6e64adbfd746e6692e837fd9a20be" \
+        ;; \
+      arm64) \
+        agy_dir="linux-arm"; \
+        agy_file="cli_linux_arm64.tar.gz"; \
+        agy_sha256="97fc9fe5a6067406cd02cbe4ae6e362c9623a24d33bec486911246c17ceb6a94" \
+        ;; \
+      *) echo "unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/agy.tar.gz \
+      "https://storage.googleapis.com/antigravity-public/antigravity-cli/${AGY_VERSION}-${AGY_BUILD}/${agy_dir}/${agy_file}"; \
+    echo "$agy_sha256  /tmp/agy.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/agy.tar.gz -C /tmp; \
+    install -m 0755 /tmp/antigravity /usr/local/bin/agy; \
+    rm -f /tmp/agy.tar.gz /tmp/antigravity
+
+COPY shared/install-system-toolchain.sh /tmp/install-system-toolchain.sh
+RUN NODE_VERSION="$NODE_VERSION" GO_VERSION="$GO_VERSION" bash /tmp/install-system-toolchain.sh
+
+COPY shared/install-user-toolchain.sh /tmp/install-user-toolchain.sh
+USER agent
+RUN bash /tmp/install-user-toolchain.sh
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `bash tests/test_harness_layout.sh; bash tests/test_antigravity_dockerfile.sh`
+Expected: layout test still FAILs on the remaining missing files (kit/bin/scripts from later tasks) unless they exist; `test_antigravity_dockerfile.sh` PASSes. To keep the suite green between tasks, create executable placeholder stubs now:
+
+```bash
+mkdir -p harnesses/antigravity-cli/kit harnesses/antigravity-cli/bin harnesses/antigravity-cli/scripts
+: > harnesses/antigravity-cli/kit/spec.yaml
+printf '#!/usr/bin/env bash\nset -euo pipefail\n' > harnesses/antigravity-cli/bin/antigravity-sbx
+printf '#!/usr/bin/env bash\nset -euo pipefail\n' > harnesses/antigravity-cli/scripts/bootstrap.sh
+printf '#!/usr/bin/env bash\nset -euo pipefail\n' > harnesses/antigravity-cli/scripts/verify.sh
+chmod +x harnesses/antigravity-cli/bin/antigravity-sbx harnesses/antigravity-cli/scripts/bootstrap.sh harnesses/antigravity-cli/scripts/verify.sh
+```
+
+Run again: both tests PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/test_harness_layout.sh tests/test_antigravity_dockerfile.sh harnesses/antigravity-cli
+git commit -m "feat: add Antigravity Dockerfile with pinned agy install"
+```
+
+---
+
+### Task 3: Harness launcher with naming and lifecycle tests
+
+**Files:**
+- Create: `harnesses/antigravity-cli/bin/antigravity-sbx` (replace Task 2 stub)
+- Create: `tests/test_antigravity_name.sh`
+- Create: `tests/test_antigravity_lifecycle.sh`
+
+**Interfaces:**
+- Consumes: Task 1 agent-name decision (default `antigravity`).
+- Produces: launcher defining `sandbox_name_for_repo`, `repo_root_from_cwd`, `ensure_worktrees_ignored`, `sandbox_exists`, `template_exists`, `workspace_mounts`, `bootstrap_sandbox`, `verify_sandbox`, `main` — the root wrapper (Task 4) delegates to this file and tests source it.
+
+- [ ] **Step 1: Write the failing name test**
+
+Create `tests/test_antigravity_name.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx"
+actual="$(sandbox_name_for_repo "/Users/example/dev/projects/my_app")"
+[[ "$actual" == "antigravity-my-app-2ed5b256" ]] || {
+  echo "unexpected Antigravity sandbox name: $actual" >&2
+  exit 1
+}
+```
+
+- [ ] **Step 2: Write the failing lifecycle test**
+
+Create `tests/test_antigravity_lifecycle.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+repo="$tmp/repo"
+git init -q "$repo"
+repo="$(cd -P "$repo" && pwd)"
+source "$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx"
+
+if ensure_worktrees_ignored "$repo"; then
+  echo "Antigravity worktree guard accepted an unignored directory" >&2
+  exit 1
+fi
+
+printf '.worktrees/\n' >"$repo/.gitignore"
+ensure_worktrees_ignored "$repo"
+
+mounts="$(workspace_mounts "$repo")"
+[[ "$mounts" == "$repo
+$ROOT:ro" ]] || {
+  echo "unexpected Antigravity workspace mounts: $mounts" >&2
+  exit 1
+}
+
+mkdir -p "$tmp/bin"
+cat >"$tmp/bin/sbx" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$1" == "ls" && "$2" == "-q" ]]; then
+  if [[ "${MOCK_EXISTING:-0}" == 1 ]]; then
+    printf '%s\n' "$MOCK_SANDBOX_NAME"
+  fi
+  exit 0
+fi
+
+if [[ "$1" == "template" && "$2" == "ls" ]]; then
+  printf '%s\n' 'docker.io/library/antigravity-sbx local 753b231c8eaa shell-docker 2 days ago'
+  exit 0
+fi
+
+printf 'sbx' >>"$MOCK_LOG"
+for arg in "$@"; do
+  printf ' %s' "$arg" >>"$MOCK_LOG"
+done
+printf '\n' >>"$MOCK_LOG"
+
+if [[ "$1" == "exec" && "${3:-}" == "test" && "${MOCK_MARKER_PRESENT:-0}" != 1 ]]; then
+  exit 1
+fi
+MOCK
+chmod +x "$tmp/bin/sbx"
+
+name="$(sandbox_name_for_repo "$repo")"
+export MOCK_LOG="$tmp/commands.log"
+export MOCK_SANDBOX_NAME="$name"
+(
+  cd "$repo"
+  PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx'; main --model test-model"
+)
+
+grep -Fq "sbx create --name $name --template antigravity-sbx:local --kit $ROOT/harnesses/antigravity-cli/kit antigravity $repo $ROOT:ro" "$MOCK_LOG" || {
+  cat "$MOCK_LOG" >&2
+  exit 1
+}
+grep -Fq "sbx exec $name bash $ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" "$MOCK_LOG" || {
+  cat "$MOCK_LOG" >&2
+  exit 1
+}
+grep -Fq "sbx run --name $name -- --model test-model" "$MOCK_LOG" || {
+  cat "$MOCK_LOG" >&2
+  exit 1
+}
+
+export MOCK_EXISTING=1
+export MOCK_MARKER_PRESENT=0
+(
+  cd "$repo"
+  PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx'; main --session resumed"
+)
+
+grep -Fq "sbx exec $name test -f" "$MOCK_LOG" || {
+  cat "$MOCK_LOG" >&2
+  exit 1
+}
+[[ "$(grep -Fc "sbx exec $name bash $ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" "$MOCK_LOG")" == 2 ]] || {
+  cat "$MOCK_LOG" >&2
+  exit 1
+}
+grep -Fq "sbx run --name $name -- --session resumed" "$MOCK_LOG" || {
+  cat "$MOCK_LOG" >&2
+  exit 1
+}
+```
+
+If Task 1 chose the `shell` fallback, change the `sbx create` assertion to end with `shell $repo $ROOT:ro` and the two `sbx run` assertions to `sbx run --name $name -- agy --model test-model` / `sbx run --name $name -- agy --session resumed`.
+
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `bash tests/test_antigravity_name.sh; bash tests/test_antigravity_lifecycle.sh`
+Expected: FAIL — stub launcher lacks `sandbox_name_for_repo`.
+
+- [ ] **Step 4: Implement the launcher**
+
+Replace `harnesses/antigravity-cli/bin/antigravity-sbx` with:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+TEMPLATE="antigravity-sbx:local"
+KIT="$ROOT/harnesses/antigravity-cli/kit"
+BOOTSTRAP="$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"
+VERIFY="$ROOT/harnesses/antigravity-cli/scripts/verify.sh"
+BOOTSTRAP_MARKER="/home/agent/.cache/claude-sbx/antigravity-bootstrap-v1"
+
+sandbox_name_for_repo() {
+  local repo_root="$1"
+  local base slug digest
+  base="$(basename "$repo_root")"
+  slug="$(printf '%s' "$base" | tr '[:upper:]_' '[:lower:]-' | sed -E 's/[^a-z0-9.+-]+/-/g; s/^-+//; s/-+$//')"
+  digest="$(printf '%s' "$repo_root" | shasum -a 256 | awk '{print substr($1,1,8)}')"
+  printf 'antigravity-%s-%s\n' "$slug" "$digest"
+}
+
+repo_root_from_cwd() {
+  git rev-parse --show-toplevel
+}
+
+ensure_worktrees_ignored() {
+  local repo_root="$1"
+  local probe="$repo_root/.worktrees/.sbx-ignore-probe"
+  mkdir -p "$repo_root/.worktrees"
+  git -C "$repo_root" check-ignore -q "$probe"
+}
+
+sandbox_exists() {
+  local name="$1"
+  sbx ls -q | grep -Fx "$name" >/dev/null
+}
+
+template_exists() {
+  sbx template ls | awk '$1 ~ /(^|\/)antigravity-sbx$/ && $2 == "local" { found = 1 } END { exit !found }'
+}
+
+workspace_mounts() {
+  local repo_root="$1"
+  printf '%s\n' "$repo_root"
+  if [[ "$repo_root" != "$ROOT" ]]; then
+    printf '%s\n' "$ROOT:ro"
+  fi
+}
+
+bootstrap_sandbox() {
+  local name="$1"
+  sbx exec "$name" bash "$BOOTSTRAP"
+}
+
+verify_sandbox() {
+  local name="$1"
+  sbx exec "$name" bash "$VERIFY"
+}
+
+main() {
+  command -v sbx >/dev/null 2>&1 || {
+    echo "antigravity-sbx: 'sbx' not found. Install/update Docker Desktop with Docker Sandboxes support." >&2
+    exit 1
+  }
+
+  local repo_root name workspace
+  local -a workspaces
+  if ! repo_root="$(repo_root_from_cwd 2>/dev/null)"; then
+    echo "antigravity-sbx: run this command from inside a Git repository" >&2
+    exit 2
+  fi
+
+  if ! ensure_worktrees_ignored "$repo_root"; then
+    cat >&2 <<'MSG'
+antigravity-sbx: .worktrees/ is not ignored by Git.
+
+Add this line to the repository's .gitignore:
+
+.worktrees/
+
+Then run antigravity-sbx again.
+MSG
+    exit 3
+  fi
+
+  if ! template_exists; then
+    cat >&2 <<MSG
+antigravity-sbx: template '$TEMPLATE' is not loaded.
+Run:
+  $ROOT/bin/antigravity-sbx-rebuild
+MSG
+    exit 4
+  fi
+
+  name="$(sandbox_name_for_repo "$repo_root")"
+  workspaces=()
+  while IFS= read -r workspace; do
+    workspaces+=("$workspace")
+  done < <(workspace_mounts "$repo_root")
+
+  if ! sandbox_exists "$name"; then
+    # Mount target repository read/write and this harness repository read-only.
+    # The latter makes bootstrap/verification scripts available to sbx exec.
+    sbx create \
+      --name "$name" \
+      --template "$TEMPLATE" \
+      --kit "$KIT" \
+      antigravity \
+      "${workspaces[@]}"
+
+    bootstrap_sandbox "$name"
+  elif ! sbx exec "$name" test -f "$BOOTSTRAP_MARKER"; then
+    bootstrap_sandbox "$name"
+  fi
+
+  exec sbx run --name "$name" -- "$@"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
+```
+
+Fallback variant (only if Task 1 said `shell`): replace the `antigravity \` line in `sbx create` with `shell \` and replace the final line with `exec sbx run --name "$name" -- agy "$@"`.
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `bash tests/test_antigravity_name.sh && bash tests/test_antigravity_lifecycle.sh`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add harnesses/antigravity-cli/bin/antigravity-sbx tests/test_antigravity_name.sh tests/test_antigravity_lifecycle.sh
+git commit -m "feat: add Antigravity sandbox launcher with deterministic naming"
+```
+
+---
+
+### Task 4: Root wrappers, rebuild delegate, Makefile targets, wiring tests
+
+**Files:**
+- Create: `bin/antigravity-sbx`
+- Create: `bin/antigravity-sbx-rebuild`
+- Modify: `Makefile`
+- Modify: `tests/test_wrapper_wiring.sh`
+- Modify: `tests/test_root_wrapper_symlinks.sh`
+- Modify: `tests/test_rebuild_symlink.sh`
+- Modify: `tests/test_codex_source_safety.sh`
+
+**Interfaces:**
+- Consumes: `harnesses/antigravity-cli/bin/antigravity-sbx` (Task 3), `harnesses/antigravity-cli/Dockerfile` (Task 2).
+- Produces: public commands `bin/antigravity-sbx`, `bin/antigravity-sbx-rebuild`; Make targets `rebuild-antigravity`, `verify-antigravity`.
+
+- [ ] **Step 1: Write the failing test additions**
+
+Append to `tests/test_wrapper_wiring.sh`:
+
+```bash
+grep -Fq 'FROM docker/sandbox-templates:shell-docker' "$ROOT/harnesses/antigravity-cli/Dockerfile"
+grep -Fq 'sbx create' "$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx"
+grep -Fq 'antigravity-sbx:local' "$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx"
+grep -Fq 'harnesses/antigravity-cli' "$ROOT/bin/antigravity-sbx"
+grep -Fq 'antigravity-sbx:local' "$ROOT/bin/antigravity-sbx-rebuild"
+grep -Fq 'harnesses/antigravity-cli/Dockerfile' "$ROOT/bin/antigravity-sbx-rebuild"
+```
+
+In `tests/test_root_wrapper_symlinks.sh`, extend the mock `template ls` output by adding this line inside the `printf`:
+
+```
+      'docker.io/library/antigravity-sbx local test shell-docker now' \
+```
+
+and append after the existing opencode block:
+
+```bash
+ln -s "$ROOT/bin/antigravity-sbx" "$tmp/antigravity-sbx"
+
+(
+  cd "$repo"
+  PATH="$tmp/mock-bin:$PATH" "$tmp/antigravity-sbx"
+)
+
+grep -Fq -- "--kit $ROOT/harnesses/antigravity-cli/kit antigravity $repo $ROOT:ro" "$MOCK_LOG"
+```
+
+(With the `shell` fallback from Task 1, the final grep ends with `shell $repo $ROOT:ro`.)
+
+Append to `tests/test_rebuild_symlink.sh`:
+
+```bash
+ln -s "$ROOT/bin/antigravity-sbx-rebuild" "$tmp/rebuild-antigravity"
+"$tmp/rebuild-antigravity"
+
+grep -Fq "docker build --pull -t antigravity-sbx:local -f $ROOT/harnesses/antigravity-cli/Dockerfile $ROOT" "$MOCK_LOG"
+grep -Fq "docker image save antigravity-sbx:local -o $ROOT/.build/antigravity-sbx.tar" "$MOCK_LOG"
+```
+
+Append to `tests/test_codex_source_safety.sh`:
+
+```bash
+PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/scripts/verify.sh'"
+PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh'"
+PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/bin/antigravity-sbx-rebuild'"
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `bash tests/test_wrapper_wiring.sh`
+Expected: FAIL — `bin/antigravity-sbx` missing.
+
+- [ ] **Step 3: Create the root wrapper**
+
+Create `bin/antigravity-sbx`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+IMPLEMENTATION="$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx"
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  source "$IMPLEMENTATION"
+else
+  exec "$IMPLEMENTATION" "$@"
+fi
+```
+
+- [ ] **Step 4: Create the rebuild delegate**
+
+Create `bin/antigravity-sbx-rebuild`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+BUILD_DIR="$ROOT/.build"
+IMAGE="antigravity-sbx:local"
+TAR="$BUILD_DIR/antigravity-sbx.tar"
+mkdir -p "$BUILD_DIR"
+docker build --pull -t "$IMAGE" -f "$ROOT/harnesses/antigravity-cli/Dockerfile" "$ROOT"
+docker image save "$IMAGE" -o "$TAR"
+if sbx template ls | grep -Fq "$IMAGE"; then
+  sbx template rm "$IMAGE"
+fi
+sbx template load "$TAR"
+echo "Loaded Docker Sandbox template: $IMAGE"
+```
+
+Make both executable:
+
+```bash
+chmod +x bin/antigravity-sbx bin/antigravity-sbx-rebuild
+```
+
+- [ ] **Step 5: Add Makefile targets**
+
+Update `Makefile` `.PHONY` line to:
+
+```make
+.PHONY: test verify verify-opencode verify-antigravity rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-antigravity
+```
+
+and append:
+
+```make
+verify-antigravity:
+	./harnesses/antigravity-cli/scripts/verify.sh
+
+rebuild-antigravity:
+	./bin/antigravity-sbx-rebuild
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `bash tests/test_wrapper_wiring.sh && bash tests/test_root_wrapper_symlinks.sh && bash tests/test_rebuild_symlink.sh && bash tests/test_codex_source_safety.sh`
+Expected: PASS (source-safety passes because Task 2 stubs and the new files only define/exit when sourced).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add bin/antigravity-sbx bin/antigravity-sbx-rebuild Makefile tests/test_wrapper_wiring.sh tests/test_root_wrapper_symlinks.sh tests/test_rebuild_symlink.sh tests/test_codex_source_safety.sh
+git commit -m "feat: add Antigravity public wrappers and rebuild delegate"
+```
+
+---
+
+### Task 5: Kit spec
+
+**Files:**
+- Modify: `harnesses/antigravity-cli/kit/spec.yaml` (replace Task 2 stub)
+- Create: `tests/test_antigravity_kit.sh`
+
+**Interfaces:**
+- Consumes: Task 1 agent-name decision.
+- Produces: kit applied by `sbx create --kit`; network allowlist for bootstrap and runtime.
+
+- [ ] **Step 1: Write the failing kit test**
+
+Create `tests/test_antigravity_kit.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+KIT="$ROOT/harnesses/antigravity-cli/kit/spec.yaml"
+
+grep -Fq 'name: antigravity-sbx' "$KIT"
+grep -Fq 'agent: antigravity' "$KIT"
+for domain in github.com api.github.com raw.githubusercontent.com objects.githubusercontent.com \
+  codeload.github.com registry.npmjs.org nodejs.org go.dev proxy.golang.org sum.golang.org \
+  pypi.org files.pythonhosted.org astral.sh mcp.context7.com cdn.playwright.dev \
+  playwright.download.prss.microsoft.com storage.googleapis.com accounts.google.com \
+  oauth2.googleapis.com sts.googleapis.com aicode.googleapis.com cloudcode-pa.googleapis.com \
+  generativelanguage.googleapis.com antigravity.google.com; do
+  grep -Fq -- "- $domain" "$KIT" || {
+    echo "missing Antigravity kit domain: $domain" >&2
+    exit 1
+  }
+done
+grep -Fq '.worktrees/' "$KIT"
+grep -Fq 'playwright-cli' "$KIT"
+grep -Fq 'OpenJDK 25' "$KIT"
+```
+
+(With the `shell` fallback from Task 1, change the `agent: antigravity` assertion to `agent: shell`.)
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `bash tests/test_antigravity_kit.sh`
+Expected: FAIL — stub spec.yaml is empty.
+
+- [ ] **Step 3: Write the kit spec**
+
+Replace `harnesses/antigravity-cli/kit/spec.yaml` with:
+
+```yaml
+schemaVersion: "2"
+kind: mixin
+name: antigravity-sbx
+version: "1.0.0"
+displayName: Antigravity SBX
+description: Development defaults for Antigravity CLI in Docker Sandboxes
+
+requires:
+  agent: antigravity
+
+permissions:
+  network:
+    allow:
+      - github.com
+      - api.github.com
+      - raw.githubusercontent.com
+      - objects.githubusercontent.com
+      - codeload.github.com
+      - registry.npmjs.org
+      - nodejs.org
+      - go.dev
+      - proxy.golang.org
+      - sum.golang.org
+      - pypi.org
+      - files.pythonhosted.org
+      - astral.sh
+      - mcp.context7.com
+      - cdn.playwright.dev
+      - playwright.download.prss.microsoft.com
+      - storage.googleapis.com
+      - accounts.google.com
+      - oauth2.googleapis.com
+      - sts.googleapis.com
+      - aicode.googleapis.com
+      - cloudcode-pa.googleapis.com
+      - generativelanguage.googleapis.com
+      - antigravity.google.com
+
+agentInstructions:
+  content: |
+    This Antigravity sandbox directly mounts the host Git repository read/write.
+
+    Worktree rules:
+    - Use project-local `.worktrees/`.
+    - Verify `.worktrees/` is ignored by Git before creating a worktree.
+    - Prefer native worktree capability when available; otherwise use `git worktree`.
+    - Never create a sibling worktree outside the mounted repository.
+    - When switching worktrees, activate that worktree path in Serena before semantic reads or edits.
+    - When returning to the primary checkout, reactivate the primary checkout in Serena.
+
+    Public repository safety:
+    - Do not commit credentials, API keys, tokens, agent session state or machine-specific paths.
+    - Keep generated images, caches and local configuration out of version control.
+
+    Tooling rules:
+    - Use repository-local package-manager, lint, formatting and test versions when defined.
+    - Verify changes with project-relevant checks before reporting completion.
+    - Use the preinstalled `playwright-cli` for browser automation, screenshots and frontend validation when a runnable local frontend exists.
+    - Prefer repository Playwright scripts and configuration when defined; otherwise run `playwright-cli` directly.
+    - Use the preinstalled OpenJDK 25, Maven and Gradle for Java projects.
+```
+
+(With the `shell` fallback from Task 1, set `agent: shell`.)
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `bash tests/test_antigravity_kit.sh`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add harnesses/antigravity-cli/kit/spec.yaml tests/test_antigravity_kit.sh
+git commit -m "feat: add Antigravity kit with network allowlist and instructions"
+```
+
+---
+
+### Task 6: Bootstrap script with tests
+
+**Files:**
+- Modify: `harnesses/antigravity-cli/scripts/bootstrap.sh` (replace Task 2 stub)
+- Create: `tests/test_antigravity_bootstrap.sh`
+
+**Interfaces:**
+- Consumes: managed MCP entry definitions from Global Constraints.
+- Produces: sourceable helpers `check_agy_mcp_managed_entries <file>`, `ensure_agy_mcp_config <file>`, `ensure_git_checkout <dir> <url> [ref]`; executable bootstrap that writes `~/.gemini/config/mcp_config.json`, links skills into `~/.gemini/config/skills/`, and touches the marker.
+
+- [ ] **Step 1: Write the failing bootstrap test**
+
+Create `tests/test_antigravity_bootstrap.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+source "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"
+
+config_dir="$tmp/config"
+mkdir -p "$config_dir"
+config="$config_dir/mcp_config.json"
+printf '%s\n' '{"mcpServers":{"custom":{"command":"example"}}}' >"$config"
+ensure_agy_mcp_config "$config"
+jq -e '.mcpServers.custom.command == "example"' "$config" >/dev/null
+jq -e '
+  .mcpServers.serena.command == "serena" and
+  .mcpServers.serena.args == ["start-mcp-server", "--context=ide-assistant", "--project-from-cwd"] and
+  .mcpServers.serena.disabled == false and
+  .mcpServers.context7.serverUrl == "https://mcp.context7.com/mcp" and
+  .mcpServers.context7.disabled == false
+' "$config" >/dev/null
+
+ensure_agy_mcp_config "$config"
+jq -e '.mcpServers | keys | sort == ["context7", "custom", "serena"]' "$config" >/dev/null
+
+conflict_dir="$tmp/conflict"
+mkdir -p "$conflict_dir"
+conflict="$conflict_dir/mcp_config.json"
+printf '%s\n' '{"mcpServers":{"serena":{"command":"other-serena"}}}' >"$conflict"
+conflict_before="$(cksum <"$conflict")"
+conflict_output="$tmp/conflict-output.log"
+if ensure_agy_mcp_config "$conflict" >"$conflict_output" 2>&1; then
+  echo "conflicting Antigravity MCP entry unexpectedly accepted" >&2
+  exit 1
+fi
+grep -Fq "conflicting managed MCP entry 'serena'" "$conflict_output"
+[[ "$(cksum <"$conflict")" == "$conflict_before" ]]
+
+printf '%s\n' '{"mcpServers":{"context7":{"serverUrl":"https://user.example/mcp"}}}' >"$conflict"
+if ensure_agy_mcp_config "$conflict" >/dev/null 2>&1; then
+  echo "conflicting Antigravity context7 entry unexpectedly accepted" >&2
+  exit 1
+fi
+
+missing="$config_dir/missing/mcp_config.json"
+ensure_agy_mcp_config "$missing"
+jq -e '.mcpServers.serena.command == "serena" and .mcpServers.context7.serverUrl == "https://mcp.context7.com/mcp"' "$missing" >/dev/null
+
+invalid="$config_dir/invalid.json"
+printf '%s\n' '{invalid json' >"$invalid"
+invalid_before="$(cksum <"$invalid")"
+if ensure_agy_mcp_config "$invalid"; then
+  echo "invalid Antigravity MCP config unexpectedly accepted" >&2
+  exit 1
+fi
+[[ "$(cksum <"$invalid")" == "$invalid_before" ]]
+
+mkdir -p "$tmp/bin"
+cat >"$tmp/bin/git" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$MOCK_GIT_LOG"
+if [[ "${1:-}" == "-C" && "${3:-}" == "rev-parse" ]]; then
+  printf '%s\n' "$MOCK_CAVEMAN_REVISION"
+  exit 0
+fi
+if [[ "${1:-}" == "clone" ]]; then
+  target="${@: -1}"
+  mkdir -p "$target/.git" "$target/skills/brainstorming" "$target/skills/debugging" "$target/skills/caveman"
+  touch "$target/skills/brainstorming/SKILL.md" "$target/skills/debugging/SKILL.md" "$target/skills/caveman/SKILL.md"
+  exit 0
+fi
+if [[ "${1:-}" == "-C" && "${3:-}" == "pull" ]]; then
+  if [[ "$2" == */caveman ]]; then
+    exit 1
+  fi
+  exit 0
+fi
+exit 1
+MOCK
+chmod +x "$tmp/bin/git"
+cat >"$tmp/bin/playwright-cli" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$MOCK_PLAYWRIGHT_LOG"
+if [[ "${1:-}" == "install" ]]; then
+  mkdir -p "$HOME/.agents/skills/playwright-cli"
+  touch "$HOME/.agents/skills/playwright-cli/SKILL.md"
+fi
+MOCK
+chmod +x "$tmp/bin/playwright-cli"
+
+export MOCK_GIT_LOG="$tmp/git.log"
+export MOCK_CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"
+export MOCK_PLAYWRIGHT_LOG="$tmp/playwright.log"
+PATH="$tmp/bin:$PATH"
+
+existing="$tmp/existing"
+mkdir -p "$existing/.git"
+ensure_git_checkout "$existing" https://example.test/repo.git
+grep -Fq -- "-C $existing pull --ff-only" "$MOCK_GIT_LOG"
+
+superpowers="$tmp/superpowers"
+ensure_git_checkout "$superpowers" https://github.com/obra/superpowers.git
+grep -Fq -- "clone --depth=1 https://github.com/obra/superpowers.git $superpowers" "$MOCK_GIT_LOG"
+
+caveman="$tmp/caveman"
+ensure_git_checkout "$caveman" https://github.com/JuliusBrussee/caveman.git v2.2.0
+grep -Fq -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $caveman" "$MOCK_GIT_LOG"
+ensure_git_checkout "$caveman" https://github.com/JuliusBrussee/caveman.git v2.2.0
+[[ "$(grep -Fc -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $caveman" "$MOCK_GIT_LOG")" == 1 ]]
+
+non_git="$tmp/non-git"
+mkdir -p "$non_git"
+if ensure_git_checkout "$non_git" https://example.test/repo.git; then
+  echo "non-git checkout path unexpectedly accepted" >&2
+  exit 1
+fi
+
+bootstrap_home="$tmp/bootstrap-home"
+mkdir -p "$bootstrap_home"
+bootstrap_output="$tmp/bootstrap-output.log"
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" bash "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" >"$bootstrap_output"
+
+grep -Fxq 'Antigravity bootstrap setup complete.' "$bootstrap_output"
+[[ -d "$bootstrap_home/.gemini/superpowers/.git" ]]
+[[ -d "$bootstrap_home/.gemini/caveman/.git" ]]
+[[ -L "$bootstrap_home/.gemini/config/skills/brainstorming" ]]
+[[ "$(readlink "$bootstrap_home/.gemini/config/skills/brainstorming")" == "$bootstrap_home/.gemini/superpowers/skills/brainstorming" ]]
+[[ -L "$bootstrap_home/.gemini/config/skills/debugging" ]]
+[[ -L "$bootstrap_home/.gemini/config/skills/caveman" ]]
+[[ "$(readlink "$bootstrap_home/.gemini/config/skills/caveman")" == "$bootstrap_home/.gemini/caveman/skills/caveman" ]]
+grep -Fq -- 'install --skills agents --global' "$MOCK_PLAYWRIGHT_LOG"
+[[ -L "$bootstrap_home/.gemini/config/skills/playwright-cli" ]]
+[[ "$(readlink "$bootstrap_home/.gemini/config/skills/playwright-cli")" == "$bootstrap_home/.agents/skills/playwright-cli" ]]
+jq -e '
+  .mcpServers.serena.command == "serena" and
+  .mcpServers.context7.serverUrl == "https://mcp.context7.com/mcp"
+' "$bootstrap_home/.gemini/config/mcp_config.json" >/dev/null
+[[ -f "$bootstrap_home/.cache/claude-sbx/antigravity-bootstrap-v1" ]]
+
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" bash "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" >>"$bootstrap_output"
+[[ "$(grep -Fc -- "clone --depth=1 https://github.com/obra/superpowers.git $bootstrap_home/.gemini/superpowers" "$MOCK_GIT_LOG")" == 1 ]]
+[[ "$(grep -Fc -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $bootstrap_home/.gemini/caveman" "$MOCK_GIT_LOG")" == 1 ]]
+if grep -Fq -- "-C $bootstrap_home/.gemini/caveman pull --ff-only" "$MOCK_GIT_LOG"; then
+  echo "Antigravity bootstrap pulled pinned Caveman checkout" >&2
+  exit 1
+fi
+
+echo "test_antigravity_bootstrap.sh: PASS"
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `bash tests/test_antigravity_bootstrap.sh`
+Expected: FAIL — stub bootstrap lacks `ensure_agy_mcp_config`.
+
+- [ ] **Step 3: Implement the bootstrap script**
+
+Replace `harnesses/antigravity-cli/scripts/bootstrap.sh` with:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+CAVEMAN_TAG="v2.2.0"
+CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"
+
+check_agy_mcp_managed_entries() {
+  local config_file="$1"
+  local conflicts
+
+  if ! conflicts="$(jq -r '
+    def check_entry($servers; $name; $expected):
+      if ($servers | has($name)) then
+        [$expected | to_entries[] | $servers[$name][.key] == .value] | all
+      else
+        true
+      end;
+
+    (.mcpServers // {}) as $servers |
+    (if check_entry($servers; "serena"; {
+      "command": "serena",
+      "args": ["start-mcp-server", "--context=ide-assistant", "--project-from-cwd"],
+      "disabled": false
+    }) then empty else "serena" end),
+    (if check_entry($servers; "context7"; {
+      "serverUrl": "https://mcp.context7.com/mcp",
+      "disabled": false
+    }) then empty else "context7" end)
+  ' "$config_file" 2>/dev/null)"; then
+    printf 'Antigravity bootstrap: invalid JSON in %s\n' "$config_file" >&2
+    return 1
+  fi
+
+  if [[ -n "$conflicts" ]]; then
+    local name
+    while IFS= read -r name; do
+      printf "Antigravity bootstrap: conflicting managed MCP entry '%s' in %s\n" "$name" "$config_file" >&2
+    done <<<"$conflicts"
+    return 1
+  fi
+}
+
+ensure_agy_mcp_config() {
+  local config_file="$1"
+  local config_dir
+  local temporary_file
+
+  config_dir="$(dirname "$config_file")"
+  mkdir -p "$config_dir"
+
+  if [[ -e "$config_file" ]] && ! jq empty "$config_file" >/dev/null 2>&1; then
+    printf 'Antigravity bootstrap: invalid JSON in %s\n' "$config_file" >&2
+    return 1
+  fi
+
+  if [[ -e "$config_file" ]] && ! check_agy_mcp_managed_entries "$config_file"; then
+    return 1
+  fi
+
+  temporary_file="$(mktemp "$config_dir/.mcp_config.json.XXXXXX")"
+  if [[ -e "$config_file" ]]; then
+    if ! jq '
+      .mcpServers = ((.mcpServers // {}) + {
+        "serena": {
+          "command": "serena",
+          "args": ["start-mcp-server", "--context=ide-assistant", "--project-from-cwd"],
+          "disabled": false
+        },
+        "context7": {
+          "serverUrl": "https://mcp.context7.com/mcp",
+          "disabled": false
+        }
+      })
+    ' "$config_file" >"$temporary_file"; then
+      rm -f "$temporary_file"
+      printf 'Antigravity bootstrap: failed to update %s\n' "$config_file" >&2
+      return 1
+    fi
+  else
+    if ! jq -n '
+      {
+        "mcpServers": {
+          "serena": {
+            "command": "serena",
+            "args": ["start-mcp-server", "--context=ide-assistant", "--project-from-cwd"],
+            "disabled": false
+          },
+          "context7": {
+            "serverUrl": "https://mcp.context7.com/mcp",
+            "disabled": false
+          }
+        }
+      }
+    ' >"$temporary_file"; then
+      rm -f "$temporary_file"
+      printf 'Antigravity bootstrap: failed to create %s\n' "$config_file" >&2
+      return 1
+    fi
+  fi
+
+  mv -f "$temporary_file" "$config_file"
+}
+
+ensure_git_checkout() {
+  if [[ $# -lt 2 || $# -gt 3 ]]; then
+    printf 'Antigravity bootstrap: usage: ensure_git_checkout <directory> <url> [<ref>]\n' >&2
+    return 2
+  fi
+
+  local directory="$1"
+  local url="$2"
+  local ref="${3:-}"
+
+  if [[ -e "$directory/.git" ]]; then
+    if [[ -z "$ref" ]]; then
+      git -C "$directory" pull --ff-only
+    fi
+  elif [[ ! -e "$directory" ]]; then
+    if [[ -n "$ref" ]]; then
+      git clone --depth=1 --branch "$ref" "$url" "$directory"
+    else
+      git clone --depth=1 "$url" "$directory"
+    fi
+  else
+    printf 'Antigravity bootstrap: refusing to replace non-git %s\n' "$directory" >&2
+    return 1
+  fi
+}
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+superpowers_dir="$HOME/.gemini/superpowers"
+ensure_git_checkout \
+  "$superpowers_dir" \
+  https://github.com/obra/superpowers.git
+
+caveman_dir="$HOME/.gemini/caveman"
+ensure_git_checkout \
+  "$caveman_dir" \
+  https://github.com/JuliusBrussee/caveman.git \
+  "$CAVEMAN_TAG"
+if [[ "$(git -C "$caveman_dir" rev-parse HEAD)" != "$CAVEMAN_REVISION" ]]; then
+  printf 'Antigravity bootstrap: unexpected Caveman revision in %s\n' "$caveman_dir" >&2
+  exit 1
+fi
+
+skills_dir="$HOME/.gemini/config/skills"
+mkdir -p "$skills_dir"
+for skill_path in "$superpowers_dir"/skills/*/; do
+  skill_path="${skill_path%/}"
+  [[ -d "$skill_path" ]] || continue
+  ln -sfn "$skill_path" "$skills_dir/$(basename "$skill_path")"
+done
+ln -sfn "$caveman_dir/skills/caveman" "$skills_dir/caveman"
+
+playwright-cli install --skills agents --global
+ln -sfn "$HOME/.agents/skills/playwright-cli" "$skills_dir/playwright-cli"
+
+ensure_agy_mcp_config "$HOME/.gemini/config/mcp_config.json"
+
+mkdir -p "$HOME/.cache/claude-sbx"
+touch "$HOME/.cache/claude-sbx/antigravity-bootstrap-v1"
+
+printf '%s\n' 'Antigravity bootstrap setup complete.'
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `bash tests/test_antigravity_bootstrap.sh`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add harnesses/antigravity-cli/scripts/bootstrap.sh tests/test_antigravity_bootstrap.sh
+git commit -m "feat: add Antigravity bootstrap with managed MCP entries and skills"
+```
+
+---
+
+### Task 7: Verification script with tests
+
+**Files:**
+- Modify: `harnesses/antigravity-cli/scripts/verify.sh` (replace Task 2 stub)
+- Create: `tests/test_antigravity_verify_wiring.sh`
+
+**Interfaces:**
+- Consumes: managed MCP definitions and skill layout from Task 6.
+- Produces: `make verify-antigravity` entrypoint (target added in Task 4) that fails on the first missing command, version, config entry, or skill.
+
+- [ ] **Step 1: Write the failing verify-wiring test**
+
+Create `tests/test_antigravity_verify_wiring.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERIFY="$ROOT/harnesses/antigravity-cli/scripts/verify.sh"
+
+for cmd in agy git gh curl wget ssh rg fd jq yq fzf make just shellcheck shfmt docker node npm corepack pnpm python3 uv serena go gopls goimports golangci-lint staticcheck govulncheck dlv playwright-cli psql sqlite3 redis-cli java javac mvn gradle; do
+  grep -Fq "$cmd" "$VERIFY"
+done
+grep -Fq 'java --version' "$VERIFY"
+grep -Fq 'javac --version' "$VERIFY"
+grep -Fq '25.' "$VERIFY"
+grep -Fq 'v24.19.0' "$VERIFY"
+grep -Fq 'go1.26.6' "$VERIFY"
+grep -Fq 'mvn --version' "$VERIFY"
+grep -Fq 'gradle --version' "$VERIFY"
+grep -Fq 'docker compose version' "$VERIFY"
+grep -Fq 'agy --version' "$VERIFY"
+grep -Fq '1.1.27' "$VERIFY"
+grep -Fq 'mcp_config.json' "$VERIFY"
+grep -Fq 'serena' "$VERIFY"
+grep -Fq 'superpowers' "$VERIFY"
+grep -Fq 'caveman' "$VERIFY"
+grep -Fq 'playwright-cli' "$VERIFY"
+grep -Fq 'antigravity-sbx verification passed' "$VERIFY"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/bin" \
+  "$tmp/home/.gemini/config/skills/caveman" \
+  "$tmp/home/.gemini/config/skills/playwright-cli" \
+  "$tmp/home/.gemini/superpowers/skills/brainstorming"
+touch "$tmp/home/.gemini/config/skills/caveman/SKILL.md" \
+  "$tmp/home/.gemini/config/skills/playwright-cli/SKILL.md" \
+  "$tmp/home/.gemini/superpowers/skills/brainstorming/SKILL.md"
+ln -s "$tmp/home/.gemini/superpowers/skills/brainstorming" \
+  "$tmp/home/.gemini/config/skills/brainstorming"
+printf '%s\n' '{"mcpServers":{"serena":{"command":"serena","args":["start-mcp-server","--context=ide-assistant","--project-from-cwd"],"disabled":false},"context7":{"serverUrl":"https://mcp.context7.com/mcp","disabled":false}}}' \
+  >"$tmp/home/.gemini/config/mcp_config.json"
+
+cat >"$tmp/mock-command" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+command_name="$(basename "$0")"
+if [[ "${MOCK_FAIL_COMMAND:-}" == "$command_name" ]]; then
+  exit 1
+fi
+
+case "$command_name" in
+  java)
+    printf '%s\n' "${MOCK_JAVA_OUTPUT:-openjdk 25.0.1 2025-09-16}"
+    ;;
+  javac)
+    printf '%s\n' "${MOCK_JAVAC_OUTPUT:-javac 25.0.1}"
+    ;;
+  node)
+    printf '%s\n' 'v24.19.0'
+    ;;
+  go)
+    printf '%s\n' 'go version go1.26.6 linux/arm64'
+    ;;
+  agy)
+    printf '%s\n' "${MOCK_AGY_VERSION:-1.1.27}"
+    ;;
+  *)
+    ;;
+esac
+MOCK
+chmod +x "$tmp/mock-command"
+for cmd in agy git gh curl wget ssh rg fd yq fzf make just shellcheck shfmt docker node npm corepack pnpm python3 uv serena go gopls goimports golangci-lint staticcheck govulncheck dlv playwright-cli psql sqlite3 redis-cli java javac mvn gradle; do
+  ln -s "$tmp/mock-command" "$tmp/bin/$cmd"
+done
+ln -s "$(command -v jq)" "$tmp/bin/jq"
+
+mock_java_output='openjdk 25.0.1 2025-09-16'
+mock_javac_output='javac 25.0.1'
+mock_agy_version='1.1.27'
+mock_fail_command=''
+
+run_verify() {
+  local output="$1"
+  HOME="$tmp/home" PATH="$tmp/bin:$PATH" \
+    MOCK_JAVA_OUTPUT="$mock_java_output" MOCK_JAVAC_OUTPUT="$mock_javac_output" \
+    MOCK_AGY_VERSION="$mock_agy_version" MOCK_FAIL_COMMAND="$mock_fail_command" \
+    bash "$VERIFY" >"$output" 2>"$output.err"
+}
+
+run_verify "$tmp/success"
+grep -Fxq 'antigravity-sbx verification passed' "$tmp/success"
+
+mock_agy_version='1.1.26'
+if run_verify "$tmp/agy-failure"; then
+  echo 'unexpected Antigravity CLI version was not detected' >&2
+  exit 1
+fi
+grep -Fq 'unexpected Antigravity CLI version' "$tmp/agy-failure.err"
+mock_agy_version='1.1.27'
+
+mcp_config="$tmp/home/.gemini/config/mcp_config.json"
+printf '%s\n' '{"mcpServers":{"serena":{"command":"serena"}}}' >"$mcp_config"
+if run_verify "$tmp/mcp-failure"; then
+  echo 'invalid Antigravity MCP configuration was not detected' >&2
+  exit 1
+fi
+grep -Fq 'unexpected Antigravity MCP configuration' "$tmp/mcp-failure.err"
+printf '%s\n' '{"mcpServers":{"serena":{"command":"serena","args":["start-mcp-server","--context=ide-assistant","--project-from-cwd"],"disabled":false},"context7":{"serverUrl":"https://mcp.context7.com/mcp","disabled":false}}}' >"$mcp_config"
+
+rm "$tmp/home/.gemini/config/skills/playwright-cli/SKILL.md"
+if run_verify "$tmp/skill-failure"; then
+  echo 'missing Playwright skill was not detected' >&2
+  exit 1
+fi
+grep -Fq 'missing Antigravity skill: playwright-cli' "$tmp/skill-failure.err"
+touch "$tmp/home/.gemini/config/skills/playwright-cli/SKILL.md"
+
+rm "$tmp/home/.gemini/config/skills/brainstorming"
+if run_verify "$tmp/superpowers-failure"; then
+  echo 'missing Superpowers skill link was not detected' >&2
+  exit 1
+fi
+grep -Fq 'missing Antigravity skill: superpowers' "$tmp/superpowers-failure.err"
+ln -s "$tmp/home/.gemini/superpowers/skills/brainstorming" \
+  "$tmp/home/.gemini/config/skills/brainstorming"
+
+for failing_command in mvn gradle docker; do
+  mock_fail_command="$failing_command"
+  if run_verify "$tmp/$failing_command-failure"; then
+    echo "$failing_command failure was not detected" >&2
+    exit 1
+  fi
+  case "$failing_command" in
+    mvn) expected_error='Antigravity Maven verification failed: mvn --version' ;;
+    gradle) expected_error='Antigravity Gradle verification failed: gradle --version' ;;
+    docker) expected_error='Antigravity Docker Compose verification failed: docker compose version' ;;
+  esac
+  grep -Fq "$expected_error" "$tmp/$failing_command-failure.err"
+  mock_fail_command=''
+done
+
+echo "test_antigravity_verify_wiring.sh: PASS"
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `bash tests/test_antigravity_verify_wiring.sh`
+Expected: FAIL — stub verify.sh has none of the asserted content.
+
+- [ ] **Step 3: Implement the verification script**
+
+Replace `harnesses/antigravity-cli/scripts/verify.sh` with:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+check_java_major() {
+  local label="$1"
+  local version="$2"
+  local line
+  local major="unknown"
+  while IFS= read -r line; do
+    if [[ "$label" == 'Java' && "$line" =~ ^openjdk[[:space:]]([0-9]+)\. ]]; then
+      major="${BASH_REMATCH[1]}"
+      break
+    fi
+    if [[ "$label" == 'javac' && "$line" =~ ^javac[[:space:]]([0-9]+)\. ]]; then
+      major="${BASH_REMATCH[1]}"
+      break
+    fi
+  done <<<"$version"
+  # Require Java 25.
+  [[ "$major" == "25" ]] || {
+    echo "unexpected Antigravity $label version: $version (expected major 25; observed major $major)" >&2
+    exit 1
+  }
+}
+
+required_commands=(agy git gh curl wget ssh rg fd jq yq fzf make just shellcheck shfmt docker node npm corepack pnpm python3 uv serena go gopls goimports golangci-lint staticcheck govulncheck dlv playwright-cli psql sqlite3 redis-cli java javac mvn gradle)
+for cmd in "${required_commands[@]}"; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "missing Antigravity command: $cmd" >&2; exit 1; }
+done
+
+skills_dir="$HOME/.gemini/config/skills"
+[[ -f "$skills_dir/caveman/SKILL.md" ]] || { echo "missing Antigravity skill: caveman" >&2; exit 1; }
+[[ -f "$skills_dir/playwright-cli/SKILL.md" ]] || { echo "missing Antigravity skill: playwright-cli" >&2; exit 1; }
+superpowers_linked=0
+for skill_link in "$skills_dir"/*; do
+  [[ -L "$skill_link" ]] || continue
+  if [[ "$(readlink "$skill_link")" == "$HOME/.gemini/superpowers/skills/"* ]]; then
+    superpowers_linked=1
+  fi
+done
+[[ "$superpowers_linked" == 1 ]] || { echo "missing Antigravity skill: superpowers" >&2; exit 1; }
+
+[[ "$(agy --version)" == "1.1.27" ]] || { echo "unexpected Antigravity CLI version: $(agy --version)" >&2; exit 1; }
+
+java_version="$(java --version 2>&1)"
+check_java_major 'Java' "$java_version"
+javac_version="$(javac --version 2>&1)"
+check_java_major 'javac' "$javac_version"
+if ! mvn --version >/dev/null 2>&1; then
+  echo 'Antigravity Maven verification failed: mvn --version' >&2
+  exit 1
+fi
+if ! gradle --version >/dev/null 2>&1; then
+  echo 'Antigravity Gradle verification failed: gradle --version' >&2
+  exit 1
+fi
+[[ "$(node --version)" == "v24.19.0" ]] || { echo "unexpected Antigravity Node version: $(node --version)" >&2; exit 1; }
+grep -Fq 'go1.26.6' <<<"$(go version)" || { echo "unexpected Antigravity Go version: $(go version)" >&2; exit 1; }
+if ! docker compose version >/dev/null 2>&1; then
+  echo 'Antigravity Docker Compose verification failed: docker compose version' >&2
+  exit 1
+fi
+
+jq -e '
+  .mcpServers.serena.command == "serena" and
+  .mcpServers.serena.args == ["start-mcp-server", "--context=ide-assistant", "--project-from-cwd"] and
+  .mcpServers.context7.serverUrl == "https://mcp.context7.com/mcp"
+' "$HOME/.gemini/config/mcp_config.json" >/dev/null || { echo "unexpected Antigravity MCP configuration" >&2; exit 1; }
+
+echo "antigravity-sbx verification passed"
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `bash tests/test_antigravity_verify_wiring.sh`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add harnesses/antigravity-cli/scripts/verify.sh tests/test_antigravity_verify_wiring.sh
+git commit -m "feat: add Antigravity sandbox verification script"
+```
+
+---
+
+### Task 8: Documentation and public wiring test
+
+**Files:**
+- Modify: `README.md`
+- Modify: `docs/usage.md`
+- Modify: `AGENTS.md`
+- Modify: `tests/test_public_wiring.sh`
+
+**Interfaces:**
+- Consumes: all commands and names from Tasks 2-7.
+- Produces: public documentation for build, PATH, first start (both auth flows), naming table, verification, rebuild, and the updated future-harness statement.
+
+- [ ] **Step 1: Update the public wiring test (failing additions)**
+
+In `tests/test_public_wiring.sh`, replace the `for target in ...` line with:
+
+```bash
+for target in test verify rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-antigravity verify-opencode verify-antigravity; do
+```
+
+replace:
+
+```bash
+grep -Fq '# Claude, Codex, and OpenCode Docker Sandboxes' "$ROOT/README.md"
+```
+
+with:
+
+```bash
+grep -Fq '# Claude, Codex, OpenCode, and Antigravity Docker Sandboxes' "$ROOT/README.md"
+grep -Fq './bin/antigravity-sbx-rebuild' "$ROOT/README.md"
+grep -Fq 'ln -sfn "$PWD/bin/antigravity-sbx"' "$ROOT/README.md"
+grep -Fq 'antigravity-sbx' "$ROOT/README.md"
+```
+
+and append before the private-path check:
+
+```bash
+grep -Fq 'antigravity-sbx' "$ROOT/docs/usage.md"
+grep -Fq 'ln -sfn "$PWD/bin/antigravity-sbx-rebuild"' "$ROOT/docs/usage.md"
+grep -Fq 'antigravity-sbx:local' "$ROOT/docs/usage.md"
+grep -Fq 'antigravity-<repo-slug>-<8-hex-path-digest>' "$ROOT/docs/usage.md"
+grep -Fq 'make rebuild-antigravity' "$ROOT/docs/usage.md"
+grep -Fq 'GEMINI_API_KEY' "$ROOT/docs/usage.md"
+grep -Fq 'source /path/to/claude-sbx/bin/antigravity-sbx' "$ROOT/docs/usage.md"
+grep -Fq 'harnesses/antigravity-cli/scripts/verify.sh' "$ROOT/docs/usage.md"
+for path in "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"; do
+  [[ -x "$path" ]] || {
+    echo "missing executable Antigravity script: $path" >&2
+    exit 1
+  }
+done
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `bash tests/test_public_wiring.sh`
+Expected: FAIL — README/usage lack Antigravity content.
+
+- [ ] **Step 3: Update README.md**
+
+Change the title (line 1) to:
+
+```markdown
+# Claude, Codex, OpenCode, and Antigravity Docker Sandboxes
+```
+
+Change the first paragraph's "for Claude Code, Codex, and OpenCode" to "for Claude Code, Codex, OpenCode, and Antigravity CLI". In the rebuild block add `./bin/antigravity-sbx-rebuild` after the opencode line. In the PATH block add:
+
+```bash
+ln -sfn "$PWD/bin/antigravity-sbx" "$HOME/.local/bin/antigravity-sbx"
+ln -sfn "$PWD/bin/antigravity-sbx-rebuild" "$HOME/.local/bin/antigravity-sbx-rebuild"
+```
+
+In the start block add:
+
+```bash
+# or
+antigravity-sbx
+```
+
+- [ ] **Step 4: Update docs/usage.md**
+
+Apply these edits (keep surrounding text):
+
+1. "Build the harness templates" code block: add `./bin/antigravity-sbx-rebuild`.
+2. Paragraph after that block: change to "These commands pull the current agent base image, build `claude-sbx:local`, `codex-sbx:local`, `opencode-sbx:local`, and `antigravity-sbx:local`, export their images under `.build/`, and load them into Docker Sandboxes. `make rebuild` is kept as a compatibility alias for the Claude rebuild; use `make rebuild-claude`, `make rebuild-codex`, `make rebuild-opencode`, or `make rebuild-antigravity` when choosing explicitly." (The Antigravity build uses the neutral shell base image plus a pinned Antigravity CLI release.)
+3. PATH section: add the two `antigravity-sbx` symlink lines.
+4. After "First start: OpenCode", add a new section:
+
+```markdown
+## First start: Antigravity CLI
+
+Build the Antigravity template before creating its sandbox:
+
+```bash
+# In the harness repository
+sbx login
+./bin/antigravity-sbx-rebuild
+
+# In the target Git repository
+cd /path/to/target-repository
+grep -qxF '.worktrees/' .gitignore || echo '.worktrees/' >> .gitignore
+antigravity-sbx
+```
+
+On first start, Antigravity CLI prints a Google Sign-In URL. Open it in a host
+browser and complete the login. The credential is stored in sandbox state and
+reused on reattach; sign in again only after removing and recreating the
+sandbox.
+
+Alternatively, use a Gemini API key. Store it on the host before creating the
+sandbox:
+
+```bash
+sbx secret set-custom \
+  --host generativelanguage.googleapis.com \
+  --env GEMINI_API_KEY \
+  --value "$GEMINI_API_KEY"
+```
+
+Do not put Google credentials in this repository, image, kit, or Antigravity
+config files.
+```
+
+5. "Start a harness": add an "Start Antigravity CLI:" block with `antigravity-sbx`.
+6. Sandbox name table: add row `| Antigravity CLI | `antigravity-<repo-slug>-<8-hex-path-digest>` | `antigravity-sbx:local` |`.
+7. Paragraph after the table: extend to "...and OpenCode never share an agent-managed configuration directory or sandbox identity." → "Claude, Codex, OpenCode, and Antigravity never share an agent-managed configuration directory or sandbox identity."
+8. Authentication section: append "For Antigravity CLI, use Google Sign-In inside the sandbox (once per sandbox lifetime) or the `GEMINI_API_KEY` flow from [First start: Antigravity CLI](#first-start-antigravity-cli)."
+9. Verify section: add an Antigravity block mirroring OpenCode:
+
+```bash
+source /path/to/claude-sbx/bin/antigravity-sbx
+repo_root="$(git rev-parse --show-toplevel)"
+name="$(sandbox_name_for_repo "$repo_root")"
+sbx exec "$name" bash /path/to/claude-sbx/harnesses/antigravity-cli/scripts/verify.sh
+```
+
+10. Verify description paragraph: extend the bootstrap sentence to mention that the Antigravity bootstrap idempotently registers Serena and Context7 and links Superpowers, Caveman, and Playwright skills into Antigravity's global skill directory.
+11. Rebuild section: add `antigravity-sbx-rebuild` / `make rebuild-antigravity` alongside the others.
+12. "Add a future harness" section: replace the final sentence with "Claude Code, Codex, OpenCode, and Antigravity CLI are implemented."
+13. Troubleshooting table: extend the template row to include `template 'antigravity-sbx:local'` and `make rebuild-antigravity`.
+
+- [ ] **Step 5: Update AGENTS.md**
+
+Apply minimal accuracy fixes:
+
+1. In "Root commands in `bin/` are thin delegates", add a bullet: `- `antigravity-sbx` → `harnesses/antigravity-cli/bin/antigravity-sbx``.
+2. In Commands, after the `make rebuild-codex` bullet add: "- `make rebuild-antigravity` — rebuilds and loads `antigravity-sbx:local`."
+3. Replace "Do not bake Claude plugins, Codex MCP configuration, credentials, or session state into either image." with "Do not bake Claude plugins, Codex/OpenCode/Antigravity MCP configuration, credentials, or session state into any image."
+4. Replace "Claude plugins belong in the Claude bootstrap; Codex MCP registration, Superpowers, Caveman, and Playwright skills belong in the Codex bootstrap." with "Claude plugins belong in the Claude bootstrap; Codex, OpenCode, and Antigravity MCP registration, Superpowers, Caveman, and Playwright skills belong in their respective bootstraps."
+
+- [ ] **Step 6: Run test to verify it passes**
+
+Run: `bash tests/test_public_wiring.sh`
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add README.md docs/usage.md AGENTS.md tests/test_public_wiring.sh
+git commit -m "docs: document Antigravity CLI harness build, auth, and verification"
+```
+
+---
+
+### Task 9: Full suite, lint, and format
+
+**Files:**
+- All harness, test, and doc files from Tasks 2-8 (format-only changes possible).
+
+**Interfaces:**
+- Consumes: everything above.
+- Produces: green `make test`, shellcheck-clean and shfmt-formatted tree.
+
+- [ ] **Step 1: Run the full host test suite**
+
+Run: `make test`
+Expected: every test prints no error and exits 0.
+
+- [ ] **Step 2: Run shellcheck on new and modified scripts**
+
+Run:
+
+```bash
+shellcheck bin/antigravity-sbx bin/antigravity-sbx-rebuild \
+  harnesses/antigravity-cli/bin/antigravity-sbx \
+  harnesses/antigravity-cli/scripts/bootstrap.sh \
+  harnesses/antigravity-cli/scripts/verify.sh \
+  tests/test_antigravity_*.sh
+```
+
+Expected: no findings. Fix any finding and re-run.
+
+- [ ] **Step 3: Run shfmt**
+
+Run:
+
+```bash
+shfmt -l -w bin/antigravity-sbx bin/antigravity-sbx-rebuild \
+  harnesses/antigravity-cli/bin/antigravity-sbx \
+  harnesses/antigravity-cli/scripts/bootstrap.sh \
+  harnesses/antigravity-cli/scripts/verify.sh \
+  tests/test_antigravity_*.sh
+make test
+```
+
+Expected: formatting applied (or no diff) and the suite still passes.
+
+- [ ] **Step 4: Commit if formatting changed anything**
+
+```bash
+git add -A && git commit -m "style: format Antigravity harness scripts"
+```
+
+Skip the commit when there is no diff.
+
+---
+
+### Task 10: Host integration (rebuild, create, verify, authenticate)
+
+This task runs on the macOS host where `sbx` and Docker Desktop are available. It validates the real sandbox end-to-end and is the final acceptance gate from the spec.
+
+**Files:**
+- None tracked; sandbox state only.
+
+- [ ] **Step 1: Build and load the template**
+
+```bash
+./bin/antigravity-sbx-rebuild
+sbx template ls | grep antigravity-sbx
+```
+
+Expected: build succeeds (pinned tarball downloads, sha256 passes) and the template is listed.
+
+- [ ] **Step 2: Create the sandbox from a target repository**
+
+```bash
+cd /path/to/target-repository
+grep -qxF '.worktrees/' .gitignore || echo '.worktrees/' >> .gitignore
+antigravity-sbx --help
+```
+
+Expected: sandbox `antigravity-<slug>-<digest>` is created, bootstrap completes (Superpowers/Caveman/Playwright clone and link; MCP config written), and `agy` starts.
+
+- [ ] **Step 3: Run inside-sandbox verification**
+
+```bash
+source /path/to/claude-sbx/bin/antigravity-sbx
+repo_root="$(git rev-parse --show-toplevel)"
+name="$(sandbox_name_for_repo "$repo_root")"
+sbx exec "$name" bash /path/to/claude-sbx/harnesses/antigravity-cli/scripts/verify.sh
+```
+
+Expected: `antigravity-sbx verification passed`.
+
+- [ ] **Step 4: Complete authentication**
+
+Run `antigravity-sbx`, follow the printed Google Sign-In URL in a host browser, confirm `agy` reaches a session. Exit, run `antigravity-sbx` again, and confirm no second sign-in is required.
+
+- [ ] **Step 5: If bootstrap or runtime hits a blocked domain**
+
+```bash
+sbx policy log "$name"
+```
+
+Add only the missing domain to `harnesses/antigravity-cli/kit/spec.yaml`, rebuild, `sbx rm "$name"`, recreate, and re-verify. Commit the allowlist addition separately.
