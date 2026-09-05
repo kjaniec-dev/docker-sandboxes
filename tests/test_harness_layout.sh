@@ -12,3 +12,8 @@ done
 grep -Fq 'FROM docker/sandbox-templates:claude-code-docker' "$ROOT/harnesses/claude-code/Dockerfile"
 grep -Fq 'install-system-toolchain.sh' "$ROOT/harnesses/claude-code/Dockerfile"
 grep -Fq 'install-user-toolchain.sh' "$ROOT/harnesses/claude-code/Dockerfile"
+grep -Fq 'FROM docker/sandbox-templates:opencode-docker' "$ROOT/harnesses/opencode/Dockerfile"
+[[ -f "$ROOT/harnesses/opencode/kit/spec.yaml" ]]
+[[ -x "$ROOT/harnesses/opencode/bin/opencode-sbx" ]]
+[[ -x "$ROOT/harnesses/opencode/scripts/bootstrap.sh" ]]
+[[ -x "$ROOT/harnesses/opencode/scripts/verify.sh" ]]
