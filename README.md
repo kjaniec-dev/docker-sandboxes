@@ -1,8 +1,9 @@
-# Claude, Codex, and OpenCode Docker Sandboxes
+# Claude, Codex, OpenCode, and Antigravity Docker Sandboxes
 
-Reusable Docker Sandbox harnesses for Claude Code, Codex, and OpenCode. Each
-harness gives the selected Git repository a writable workspace inside its own
-sandbox while the rest of the host stays outside that workspace.
+Reusable Docker Sandbox harnesses for Claude Code, Codex, OpenCode, and
+Antigravity CLI. Each harness gives the selected Git repository a writable
+workspace inside its own sandbox while the rest of the host stays outside
+that workspace.
 
 All harnesses provide the same development toolchain: Node.js 24.19.0, Go
 1.26.6, Python and uv, Serena, Docker Engine and Compose, Playwright CLI,
@@ -19,6 +20,7 @@ Build the templates from this repository:
 ./bin/claude-sbx-rebuild
 ./bin/codex-sbx-rebuild
 ./bin/opencode-sbx-rebuild
+./bin/antigravity-sbx-rebuild
 ```
 
 Optionally make the commands available on your `PATH`:
@@ -28,6 +30,8 @@ mkdir -p "$HOME/.local/bin"
 ln -sfn "$PWD/bin/claude-sbx" "$HOME/.local/bin/claude-sbx"
 ln -sfn "$PWD/bin/codex-sbx" "$HOME/.local/bin/codex-sbx"
 ln -sfn "$PWD/bin/opencode-sbx" "$HOME/.local/bin/opencode-sbx"
+ln -sfn "$PWD/bin/antigravity-sbx" "$HOME/.local/bin/antigravity-sbx"
+ln -sfn "$PWD/bin/antigravity-sbx-rebuild" "$HOME/.local/bin/antigravity-sbx-rebuild"
 ln -sfn "$PWD/bin/claude-sbx-rebuild" "$HOME/.local/bin/claude-sbx-rebuild"
 ln -sfn "$PWD/bin/codex-sbx-rebuild" "$HOME/.local/bin/codex-sbx-rebuild"
 ln -sfn "$PWD/bin/opencode-sbx-rebuild" "$HOME/.local/bin/opencode-sbx-rebuild"
@@ -43,6 +47,8 @@ claude-sbx
 codex-sbx
 # or
 opencode-sbx
+# or
+antigravity-sbx
 ```
 
 The `grep`/`echo` command modifies the target repository's `.gitignore` when

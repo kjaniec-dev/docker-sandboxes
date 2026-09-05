@@ -24,13 +24,16 @@ From this repository, build one or more templates:
 ./bin/claude-sbx-rebuild
 ./bin/codex-sbx-rebuild
 ./bin/opencode-sbx-rebuild
+./bin/antigravity-sbx-rebuild
 ```
 
 These commands pull the current agent base image, build `claude-sbx:local`,
-`codex-sbx:local`, and `opencode-sbx:local`, export their images under `.build/`,
-and load them into Docker Sandboxes. `make rebuild` is kept as a
-compatibility alias for the Claude rebuild; use `make rebuild-claude`,
-`make rebuild-codex`, or `make rebuild-opencode` when choosing explicitly.
+`codex-sbx:local`, `opencode-sbx:local`, and `antigravity-sbx:local`, export
+their images under `.build/`, and load them into Docker Sandboxes.
+`make rebuild` is kept as a compatibility alias for the Claude rebuild; use
+`make rebuild-claude`, `make rebuild-codex`, `make rebuild-opencode`, or
+`make rebuild-antigravity` when choosing explicitly. (The Antigravity build
+uses the neutral shell base image plus a pinned Antigravity CLI release.)
 
 ## Put commands on PATH
 
@@ -41,6 +44,8 @@ mkdir -p "$HOME/.local/bin"
 ln -sfn "$PWD/bin/claude-sbx" "$HOME/.local/bin/claude-sbx"
 ln -sfn "$PWD/bin/codex-sbx" "$HOME/.local/bin/codex-sbx"
 ln -sfn "$PWD/bin/opencode-sbx" "$HOME/.local/bin/opencode-sbx"
+ln -sfn "$PWD/bin/antigravity-sbx" "$HOME/.local/bin/antigravity-sbx"
+ln -sfn "$PWD/bin/antigravity-sbx-rebuild" "$HOME/.local/bin/antigravity-sbx-rebuild"
 ln -sfn "$PWD/bin/claude-sbx-rebuild" "$HOME/.local/bin/claude-sbx-rebuild"
 ln -sfn "$PWD/bin/codex-sbx-rebuild" "$HOME/.local/bin/codex-sbx-rebuild"
 ln -sfn "$PWD/bin/opencode-sbx-rebuild" "$HOME/.local/bin/opencode-sbx-rebuild"
@@ -134,6 +139,39 @@ global secret. Do not put provider values in this repository, image, kit, or
 OpenCode config. Host-level OpenCode config is not inherited by this harness;
 bootstrap creates managed global config inside the sandbox.
 
+## First start: Antigravity CLI
+
+Build the Antigravity template before creating its sandbox:
+
+```bash
+# In the harness repository
+sbx login
+./bin/antigravity-sbx-rebuild
+
+# In the target Git repository
+cd /path/to/target-repository
+grep -qxF '.worktrees/' .gitignore || echo '.worktrees/' >> .gitignore
+antigravity-sbx
+```
+
+On first start, Antigravity CLI prints a Google Sign-In URL. Open it in a host
+browser and complete the login. The credential is stored in sandbox state and
+reused on reattach; sign in again only after removing and recreating the
+sandbox.
+
+Alternatively, use a Gemini API key. Store it on the host before creating the
+sandbox:
+
+```bash
+sbx secret set-custom \
+  --host generativelanguage.googleapis.com \
+  --env GEMINI_API_KEY \
+  --value "$GEMINI_API_KEY"
+```
+
+Do not put Google credentials in this repository, image, kit, or Antigravity
+config files.
+
 ## Start a harness
 
 In the target Git repository, project-local worktrees must be ignored:
@@ -164,6 +202,12 @@ Start OpenCode:
 opencode-sbx
 ```
 
+Start Antigravity CLI:
+
+```bash
+antigravity-sbx
+```
+
 All harnesses use direct workspace mode: the target repository is mounted
 read/write at its original absolute path. They intentionally do not use
 `--clone`. When the target differs from this repository, the harness source is
@@ -178,10 +222,11 @@ Sandbox names are deterministic but separate:
 | Claude Code | `claude-<repo-slug>-<8-hex-path-digest>` | `claude-sbx:local` |
 | Codex | `codex-<repo-slug>-<8-hex-path-digest>` | `codex-sbx:local` |
 | OpenCode | `opencode-<repo-slug>-<8-hex-path-digest>` | `opencode-sbx:local` |
+| Antigravity CLI | `antigravity-<repo-slug>-<8-hex-path-digest>` | `antigravity-sbx:local` |
 
 Running a command again reattaches to that harness's sandbox. Claude, Codex,
-and OpenCode never share an agent-managed configuration directory or sandbox
-identity.
+OpenCode, and Antigravity never share an agent-managed configuration directory
+or sandbox identity.
 
 ## Authentication
 
@@ -200,6 +245,10 @@ credentials, or session state to the Dockerfiles, kits, or repository.
 For OpenCode, use the provider commands listed in [First start: OpenCode](#first-start-opencode).
 OpenCode Zen requires `sbx secret set-custom` with host `opencode.ai`; its
 `OPENCODE_API_KEY` value is never written to tracked files or the sandbox image.
+
+For Antigravity CLI, use Google Sign-In inside the sandbox (once per sandbox
+lifetime) or the `GEMINI_API_KEY` flow from
+[First start: Antigravity CLI](#first-start-antigravity-cli).
 
 ## Worktrees and IDEs
 
@@ -247,13 +296,24 @@ name="$(sandbox_name_for_repo "$repo_root")"
 sbx exec "$name" bash /path/to/claude-sbx/harnesses/opencode/scripts/verify.sh
 ```
 
+For Antigravity CLI:
+
+```bash
+source /path/to/claude-sbx/bin/antigravity-sbx
+repo_root="$(git rev-parse --show-toplevel)"
+name="$(sandbox_name_for_repo "$repo_root")"
+sbx exec "$name" bash /path/to/claude-sbx/harnesses/antigravity-cli/scripts/verify.sh
+```
+
 Each verification checks its agent CLI plus the shared toolchain, pinned
 Node/Go versions, Serena, Playwright CLI, OpenJDK 25, Maven, Gradle, and Docker
 Compose. Codex bootstrap idempotently registers Serena and Context7 as MCP
 servers, installs Superpowers and the pinned Caveman skill into
 `~/.agents/skills/`, and installs the Playwright CLI skills for Codex. The
-Codex kit instructs the agent to use `playwright-cli` for browser and frontend
-validation.
+Antigravity bootstrap idempotently registers Serena and Context7 and links
+Superpowers, Caveman, and Playwright skills into Antigravity's global skill
+directory. The Codex kit instructs the agent to use `playwright-cli` for
+browser and frontend validation.
 
 ## Ports
 
@@ -271,7 +331,8 @@ Existing sandboxes retain their current VM state and template. After changing a
 Dockerfile, shared toolchain script, or harness kit:
 
 1. Rebuild the appropriate template with `claude-sbx-rebuild`,
-   `codex-sbx-rebuild`, or `make rebuild-opencode`.
+   `codex-sbx-rebuild`, `antigravity-sbx-rebuild`,
+   `make rebuild-opencode`, or `make rebuild-antigravity`.
 2. Remove that harness's existing sandbox with `sbx rm <sandbox-name>`.
 3. Run the matching harness command again from the target repository.
 
@@ -283,15 +344,15 @@ kit change also requires recreation.
 New harnesses belong under `harnesses/<name>/` and should own their Dockerfile,
 kit, launcher, bootstrap, and verification scripts. Add thin root delegates in
 `bin/`, use a unique template tag and sandbox-name prefix, share the installer
-scripts in `shared/`, and extend the host-side tests. Antigravity CLI remains a
-future harness; Claude Code, Codex, and OpenCode are implemented.
+scripts in `shared/`, and extend the host-side tests. Claude Code, Codex,
+OpenCode, and Antigravity CLI are implemented.
 
 ## Troubleshooting
 
 | Problem | What to do |
 | --- | --- |
 | `sbx: command not found` | Install Docker Sandboxes and sign in using Docker's [installation guide](https://docs.docker.com/ai/sandboxes/install/), then open a new terminal. |
-| `template 'claude-sbx:local'`, `template 'codex-sbx:local'`, or `template 'opencode-sbx:local'` is not loaded | In this harness repository, run the matching rebuild command, including `make rebuild-opencode` for OpenCode, then try again. |
+| `template 'claude-sbx:local'`, `template 'codex-sbx:local'`, `template 'opencode-sbx:local'`, or `template 'antigravity-sbx:local'` is not loaded | In this harness repository, run the matching rebuild command, including `make rebuild-opencode` for OpenCode or `make rebuild-antigravity` for Antigravity CLI, then try again. |
 | `.worktrees/ is not ignored by Git` | In the target repository, add `.worktrees/` to `.gitignore`, review the resulting Git change, then run the harness again. |
 
 If bootstrap or authentication needs network access that the kit does not
