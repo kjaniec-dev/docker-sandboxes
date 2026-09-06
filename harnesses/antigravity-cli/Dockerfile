@@ -28,8 +28,6 @@ RUN set -eux; \
     echo "$agy_sha256  /tmp/agy.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/agy.tar.gz -C /tmp; \
     install -m 0755 /tmp/antigravity /usr/local/bin/agy; \
-    printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/agy "$@"' > /usr/local/bin/opencode; \
-    chmod 0755 /usr/local/bin/opencode; \
     rm -f /tmp/agy.tar.gz /tmp/antigravity
 
 COPY shared/install-system-toolchain.sh /tmp/install-system-toolchain.sh
