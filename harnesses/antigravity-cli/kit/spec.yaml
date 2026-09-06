@@ -1,6 +1,6 @@
 schemaVersion: "2"
 kind: mixin
-name: antigravity-sbx
+name: agy-sbx
 version: "1.0.0"
 displayName: Antigravity SBX
 description: Development defaults for Antigravity CLI in Docker Sandboxes

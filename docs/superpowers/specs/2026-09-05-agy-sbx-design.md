@@ -36,7 +36,7 @@ Antigravity owns `harnesses/antigravity-cli/` with these files:
   Docker Sandboxes base: Ubuntu 26.04, `agent` user, Docker-in-Docker); no
   official Antigravity agent template exists;
 - `kit/spec.yaml`, declaring its network policy and agent instructions;
-- `bin/antigravity-sbx`, implementing direct-mount lifecycle and deterministic
+- `bin/agy-sbx`, implementing direct-mount lifecycle and deterministic
   naming;
 - `scripts/bootstrap.sh`, configuring Antigravity MCP and installing agent
   skills;
@@ -61,13 +61,13 @@ aligned with the other harnesses.
 
 Root integration adds:
 
-- `bin/antigravity-sbx` compatibility/public delegate;
-- `bin/antigravity-sbx-rebuild` template build/load delegate;
-- `make rebuild-antigravity` and `make verify-antigravity`;
+- `bin/agy-sbx` compatibility/public delegate;
+- `bin/agy-sbx-rebuild` template build/load delegate;
+- `make rebuild-agy` and `make verify-agy`;
 - Antigravity entries in README, usage documentation, and host tests.
 
-Antigravity uses template tag `antigravity-sbx:local` and sandbox names of the
-form `antigravity-<repo-slug>-<8-hex-path-digest>`. It never reuses Claude,
+Antigravity uses template tag `agy-sbx:local` and sandbox names of the
+form `agy-<repo-slug>-<8-hex-path-digest>`. It never reuses Claude,
 Codex, or OpenCode configuration, template, or sandbox identity.
 
 ### Agent registration
@@ -171,7 +171,7 @@ it, and run its verification script with `sbx exec`.
 
 ## Acceptance Criteria
 
-1. `antigravity-sbx` starts Antigravity CLI in its own deterministic sandbox.
+1. `agy-sbx` starts Antigravity CLI in its own deterministic sandbox.
 2. Antigravity never shares agent-managed configuration or identity with
    Claude Code, Codex, or OpenCode.
 3. Antigravity exposes the shared pinned development toolchain.

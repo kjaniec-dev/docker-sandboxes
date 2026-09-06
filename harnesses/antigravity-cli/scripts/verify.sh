@@ -71,4 +71,4 @@ jq -e '
   .mcpServers.context7.serverUrl == "https://mcp.context7.com/mcp"
 ' "$HOME/.gemini/config/mcp_config.json" >/dev/null || { echo "unexpected Antigravity MCP configuration" >&2; exit 1; }
 
-echo "antigravity-sbx verification passed"
+echo "agy-sbx verification passed"

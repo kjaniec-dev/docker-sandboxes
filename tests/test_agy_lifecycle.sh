@@ -8,7 +8,7 @@ trap 'rm -rf "$tmp"' EXIT
 repo="$tmp/repo"
 git init -q "$repo"
 repo="$(cd -P "$repo" && pwd)"
-source "$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx"
+source "$ROOT/harnesses/antigravity-cli/bin/agy-sbx"
 
 if ensure_worktrees_ignored "$repo"; then
   echo "Antigravity worktree guard accepted an unignored directory" >&2
@@ -38,7 +38,7 @@ if [[ "$1" == "ls" && "$2" == "-q" ]]; then
 fi
 
 if [[ "$1" == "template" && "$2" == "ls" ]]; then
-  printf '%s\n' 'docker.io/library/antigravity-sbx local 753b231c8eaa shell-docker 2 days ago'
+  printf '%s\n' 'docker.io/library/agy-sbx local 753b231c8eaa shell-docker 2 days ago'
   exit 0
 fi
 
@@ -59,10 +59,10 @@ export MOCK_LOG="$tmp/commands.log"
 export MOCK_SANDBOX_NAME="$name"
 (
   cd "$repo"
-  PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx'; main --model test-model"
+  PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/bin/agy-sbx'; main --model test-model"
 )
 
-grep -Fq "sbx create --name $name --template antigravity-sbx:local --kit $ROOT/harnesses/antigravity-cli/kit shell $repo $ROOT:ro" "$MOCK_LOG" || {
+grep -Fq "sbx create --name $name --template agy-sbx:local --kit $ROOT/harnesses/antigravity-cli/kit shell $repo $ROOT:ro" "$MOCK_LOG" || {
   cat "$MOCK_LOG" >&2
   exit 1
 }
@@ -79,7 +79,7 @@ export MOCK_EXISTING=1
 export MOCK_MARKER_PRESENT=0
 (
   cd "$repo"
-  PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx'; main --session resumed"
+  PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/bin/agy-sbx'; main --session resumed"
 )
 
 grep -Fq "sbx exec $name test -f" "$MOCK_LOG" || {

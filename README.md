@@ -20,7 +20,7 @@ Build the templates from this repository:
 ./bin/claude-sbx-rebuild
 ./bin/codex-sbx-rebuild
 ./bin/opencode-sbx-rebuild
-./bin/antigravity-sbx-rebuild
+./bin/agy-sbx-rebuild
 ```
 
 Optionally make the commands available on your `PATH`:
@@ -30,8 +30,8 @@ mkdir -p "$HOME/.local/bin"
 ln -sfn "$PWD/bin/claude-sbx" "$HOME/.local/bin/claude-sbx"
 ln -sfn "$PWD/bin/codex-sbx" "$HOME/.local/bin/codex-sbx"
 ln -sfn "$PWD/bin/opencode-sbx" "$HOME/.local/bin/opencode-sbx"
-ln -sfn "$PWD/bin/antigravity-sbx" "$HOME/.local/bin/antigravity-sbx"
-ln -sfn "$PWD/bin/antigravity-sbx-rebuild" "$HOME/.local/bin/antigravity-sbx-rebuild"
+ln -sfn "$PWD/bin/agy-sbx" "$HOME/.local/bin/agy-sbx"
+ln -sfn "$PWD/bin/agy-sbx-rebuild" "$HOME/.local/bin/agy-sbx-rebuild"
 ln -sfn "$PWD/bin/claude-sbx-rebuild" "$HOME/.local/bin/claude-sbx-rebuild"
 ln -sfn "$PWD/bin/codex-sbx-rebuild" "$HOME/.local/bin/codex-sbx-rebuild"
 ln -sfn "$PWD/bin/opencode-sbx-rebuild" "$HOME/.local/bin/opencode-sbx-rebuild"
@@ -48,7 +48,7 @@ codex-sbx
 # or
 opencode-sbx
 # or
-antigravity-sbx
+agy-sbx
 ```
 
 The `grep`/`echo` command modifies the target repository's `.gitignore` when

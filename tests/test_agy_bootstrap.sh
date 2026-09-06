@@ -148,4 +148,4 @@ if grep -Fq -- "-C $bootstrap_home/.gemini/caveman pull --ff-only" "$MOCK_GIT_LO
   exit 1
 fi
 
-echo "test_antigravity_bootstrap.sh: PASS"
+echo "test_agy_bootstrap.sh: PASS"

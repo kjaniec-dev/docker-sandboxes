@@ -24,15 +24,15 @@ From this repository, build one or more templates:
 ./bin/claude-sbx-rebuild
 ./bin/codex-sbx-rebuild
 ./bin/opencode-sbx-rebuild
-./bin/antigravity-sbx-rebuild
+./bin/agy-sbx-rebuild
 ```
 
 These commands pull the current agent base image, build `claude-sbx:local`,
-`codex-sbx:local`, `opencode-sbx:local`, and `antigravity-sbx:local`, export
+`codex-sbx:local`, `opencode-sbx:local`, and `agy-sbx:local`, export
 their images under `.build/`, and load them into Docker Sandboxes.
 `make rebuild` is kept as a compatibility alias for the Claude rebuild; use
 `make rebuild-claude`, `make rebuild-codex`, `make rebuild-opencode`, or
-`make rebuild-antigravity` when choosing explicitly. (The Antigravity build
+`make rebuild-agy` when choosing explicitly. (The Antigravity build
 uses the neutral shell base image plus a pinned Antigravity CLI release.)
 
 ## Put commands on PATH
@@ -44,8 +44,8 @@ mkdir -p "$HOME/.local/bin"
 ln -sfn "$PWD/bin/claude-sbx" "$HOME/.local/bin/claude-sbx"
 ln -sfn "$PWD/bin/codex-sbx" "$HOME/.local/bin/codex-sbx"
 ln -sfn "$PWD/bin/opencode-sbx" "$HOME/.local/bin/opencode-sbx"
-ln -sfn "$PWD/bin/antigravity-sbx" "$HOME/.local/bin/antigravity-sbx"
-ln -sfn "$PWD/bin/antigravity-sbx-rebuild" "$HOME/.local/bin/antigravity-sbx-rebuild"
+ln -sfn "$PWD/bin/agy-sbx" "$HOME/.local/bin/agy-sbx"
+ln -sfn "$PWD/bin/agy-sbx-rebuild" "$HOME/.local/bin/agy-sbx-rebuild"
 ln -sfn "$PWD/bin/claude-sbx-rebuild" "$HOME/.local/bin/claude-sbx-rebuild"
 ln -sfn "$PWD/bin/codex-sbx-rebuild" "$HOME/.local/bin/codex-sbx-rebuild"
 ln -sfn "$PWD/bin/opencode-sbx-rebuild" "$HOME/.local/bin/opencode-sbx-rebuild"
@@ -146,12 +146,12 @@ Build the Antigravity template before creating its sandbox:
 ```bash
 # In the harness repository
 sbx login
-./bin/antigravity-sbx-rebuild
+./bin/agy-sbx-rebuild
 
 # In the target Git repository
 cd /path/to/target-repository
 grep -qxF '.worktrees/' .gitignore || echo '.worktrees/' >> .gitignore
-antigravity-sbx
+agy-sbx
 ```
 
 On first start, Antigravity CLI prints a Google Sign-In URL. Open it in a host
@@ -205,7 +205,7 @@ opencode-sbx
 Start Antigravity CLI:
 
 ```bash
-antigravity-sbx
+agy-sbx
 ```
 
 All harnesses use direct workspace mode: the target repository is mounted
@@ -222,7 +222,7 @@ Sandbox names are deterministic but separate:
 | Claude Code | `claude-<repo-slug>-<8-hex-path-digest>` | `claude-sbx:local` |
 | Codex | `codex-<repo-slug>-<8-hex-path-digest>` | `codex-sbx:local` |
 | OpenCode | `opencode-<repo-slug>-<8-hex-path-digest>` | `opencode-sbx:local` |
-| Antigravity CLI | `antigravity-<repo-slug>-<8-hex-path-digest>` | `antigravity-sbx:local` |
+| Antigravity CLI | `agy-<repo-slug>-<8-hex-path-digest>` | `agy-sbx:local` |
 
 Running a command again reattaches to that harness's sandbox. Claude, Codex,
 OpenCode, and Antigravity never share an agent-managed configuration directory
@@ -299,7 +299,7 @@ sbx exec "$name" bash /path/to/claude-sbx/harnesses/opencode/scripts/verify.sh
 For Antigravity CLI:
 
 ```bash
-source /path/to/claude-sbx/bin/antigravity-sbx
+source /path/to/claude-sbx/bin/agy-sbx
 repo_root="$(git rev-parse --show-toplevel)"
 name="$(sandbox_name_for_repo "$repo_root")"
 sbx exec "$name" bash /path/to/claude-sbx/harnesses/antigravity-cli/scripts/verify.sh
@@ -331,8 +331,8 @@ Existing sandboxes retain their current VM state and template. After changing a
 Dockerfile, shared toolchain script, or harness kit:
 
 1. Rebuild the appropriate template with `claude-sbx-rebuild`,
-   `codex-sbx-rebuild`, `antigravity-sbx-rebuild`,
-   `make rebuild-opencode`, or `make rebuild-antigravity`.
+   `codex-sbx-rebuild`, `agy-sbx-rebuild`,
+   `make rebuild-opencode`, or `make rebuild-agy`.
 2. Remove that harness's existing sandbox with `sbx rm <sandbox-name>`.
 3. Run the matching harness command again from the target repository.
 
@@ -352,7 +352,7 @@ OpenCode, and Antigravity CLI are implemented.
 | Problem | What to do |
 | --- | --- |
 | `sbx: command not found` | Install Docker Sandboxes and sign in using Docker's [installation guide](https://docs.docker.com/ai/sandboxes/install/), then open a new terminal. |
-| `template 'claude-sbx:local'`, `template 'codex-sbx:local'`, `template 'opencode-sbx:local'`, or `template 'antigravity-sbx:local'` is not loaded | In this harness repository, run the matching rebuild command, including `make rebuild-opencode` for OpenCode or `make rebuild-antigravity` for Antigravity CLI, then try again. |
+| `template 'claude-sbx:local'`, `template 'codex-sbx:local'`, `template 'opencode-sbx:local'`, or `template 'agy-sbx:local'` is not loaded | In this harness repository, run the matching rebuild command, including `make rebuild-opencode` for OpenCode or `make rebuild-agy` for Antigravity CLI, then try again. |
 | `.worktrees/ is not ignored by Git` | In the target repository, add `.worktrees/` to `.gitignore`, review the resulting Git change, then run the harness again. |
 
 If bootstrap or authentication needs network access that the kit does not

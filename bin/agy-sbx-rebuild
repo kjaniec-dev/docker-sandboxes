@@ -15,8 +15,8 @@ done
 
 ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
 BUILD_DIR="$ROOT/.build"
-IMAGE="antigravity-sbx:local"
-TAR="$BUILD_DIR/antigravity-sbx.tar"
+IMAGE="agy-sbx:local"
+TAR="$BUILD_DIR/agy-sbx.tar"
 mkdir -p "$BUILD_DIR"
 docker build --pull -t "$IMAGE" -f "$ROOT/harnesses/antigravity-cli/Dockerfile" "$ROOT"
 docker image save "$IMAGE" -o "$TAR"

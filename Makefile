@@ -1,4 +1,4 @@
-.PHONY: test verify verify-opencode verify-antigravity rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-antigravity
+.PHONY: test verify verify-opencode verify-agy rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-agy
 
 test:
 	./tests/run.sh
@@ -9,7 +9,7 @@ verify:
 verify-opencode:
 	./harnesses/opencode/scripts/verify.sh
 
-verify-antigravity:
+verify-agy:
 	./harnesses/antigravity-cli/scripts/verify.sh
 
 rebuild:
@@ -24,5 +24,5 @@ rebuild-codex:
 rebuild-opencode:
 	./bin/opencode-sbx-rebuild
 
-rebuild-antigravity:
-	./bin/antigravity-sbx-rebuild
+rebuild-agy:
+	./bin/agy-sbx-rebuild

@@ -22,7 +22,7 @@ case "$1 ${2:-}" in
       'docker.io/library/claude-sbx local test claude-code-docker now' \
       'docker.io/library/codex-sbx local test codex-docker now' \
       'docker.io/library/opencode-sbx local test opencode-docker now' \
-      'docker.io/library/antigravity-sbx local test shell-docker now'
+      'docker.io/library/agy-sbx local test shell-docker now'
     exit 0
     ;;
 esac
@@ -57,11 +57,11 @@ grep -Fq -- "--kit $ROOT/harnesses/claude-code/kit claude $repo $ROOT:ro" "$MOCK
 grep -Fq -- "--kit $ROOT/harnesses/codex/kit codex $repo $ROOT:ro" "$MOCK_LOG"
 grep -Fq -- "--kit $ROOT/harnesses/opencode/kit opencode $repo $ROOT:ro" "$MOCK_LOG"
 
-ln -s "$ROOT/bin/antigravity-sbx" "$tmp/antigravity-sbx"
+ln -s "$ROOT/bin/agy-sbx" "$tmp/agy-sbx"
 
 (
   cd "$repo"
-  PATH="$tmp/mock-bin:$PATH" "$tmp/antigravity-sbx"
+  PATH="$tmp/mock-bin:$PATH" "$tmp/agy-sbx"
 )
 
 grep -Fq -- "--kit $ROOT/harnesses/antigravity-cli/kit shell $repo $ROOT:ro" "$MOCK_LOG"

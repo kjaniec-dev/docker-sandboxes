@@ -20,4 +20,4 @@ PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/claude-code/scripts/verif
 PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/bin/claude-sbx-rebuild'"
 PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/scripts/verify.sh'"
 PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh'"
-PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/bin/antigravity-sbx-rebuild'"
+PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/bin/agy-sbx-rebuild'"
