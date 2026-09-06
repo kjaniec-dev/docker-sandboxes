@@ -72,12 +72,12 @@ Codex, or OpenCode configuration, template, or sandbox identity.
 
 ### Agent registration
 
-The launcher creates sandboxes with the agent name `antigravity` and the kit
-declares `requires.agent: antigravity`. If Docker Sandboxes rejects an
-unregistered agent name, the fallback is: kit `requires.agent: shell`, create
-with `shell`, and launch via `sbx run --name <name> -- agy "$@"`. The probe
-(`sbx create --help` and a trial create) runs before implementation and the
-choice is fixed for all harness files.
+Resolved at host integration (2026-09-06): Docker Sandboxes rejects
+`antigravity` as an agent name (`ERROR: unknown agent "antigravity"`), so the
+harness uses the documented fallback: kit `requires.agent: shell`, create with
+`shell`, and launch via `sbx run --name <name> -- agy "$@"`. The harness name,
+template tag, sandbox prefix, and command wrappers keep the `antigravity`
+product naming; only the `sbx` agent registration is `shell`.
 
 ## Runtime Flow
 
