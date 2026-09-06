@@ -73,11 +73,12 @@ Codex, or OpenCode configuration, template, or sandbox identity.
 ### Agent registration
 
 Resolved at host integration (2026-09-06): Docker Sandboxes rejects
-`antigravity` as an agent name (`ERROR: unknown agent "antigravity"`), so the
-harness uses the documented fallback: kit `requires.agent: shell`, create with
-`shell`, and launch via `sbx run --name <name> -- agy "$@"`. The harness name,
-template tag, sandbox prefix, and command wrappers keep the `antigravity`
-product naming; only the `sbx` agent registration is `shell`.
+`antigravity` as an agent name (`ERROR: unknown agent "antigravity"`), and this
+installation cannot run the generic `shell` agent. The harness therefore uses
+the known `opencode` agent registration and installs an `/usr/local/bin/opencode`
+shim that execs `/usr/local/bin/agy`. The harness name, template tag, sandbox
+prefix, command wrappers, and runtime remain Antigravity-specific; only the
+Docker Sandboxes agent registration is `opencode`.
 
 ## Runtime Flow
 

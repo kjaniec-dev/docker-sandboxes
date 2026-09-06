@@ -62,7 +62,7 @@ export MOCK_SANDBOX_NAME="$name"
   PATH="$tmp/bin:$PATH" bash -c "source '$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx'; main --model test-model"
 )
 
-grep -Fq "sbx create --name $name --template antigravity-sbx:local --kit $ROOT/harnesses/antigravity-cli/kit shell $repo $ROOT:ro" "$MOCK_LOG" || {
+grep -Fq "sbx create --name $name --template antigravity-sbx:local --kit $ROOT/harnesses/antigravity-cli/kit opencode $repo $ROOT:ro" "$MOCK_LOG" || {
   cat "$MOCK_LOG" >&2
   exit 1
 }
@@ -70,7 +70,7 @@ grep -Fq "sbx exec $name bash $ROOT/harnesses/antigravity-cli/scripts/bootstrap.
   cat "$MOCK_LOG" >&2
   exit 1
 }
-grep -Fq "sbx run --name $name -- agy --model test-model" "$MOCK_LOG" || {
+grep -Fq "sbx run --name $name -- --model test-model" "$MOCK_LOG" || {
   cat "$MOCK_LOG" >&2
   exit 1
 }
@@ -90,7 +90,7 @@ grep -Fq "sbx exec $name test -f" "$MOCK_LOG" || {
   cat "$MOCK_LOG" >&2
   exit 1
 }
-grep -Fq "sbx run --name $name -- agy --session resumed" "$MOCK_LOG" || {
+grep -Fq "sbx run --name $name -- --session resumed" "$MOCK_LOG" || {
   cat "$MOCK_LOG" >&2
   exit 1
 }
