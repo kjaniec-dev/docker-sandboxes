@@ -64,4 +64,4 @@ ln -s "$ROOT/bin/antigravity-sbx" "$tmp/antigravity-sbx"
   PATH="$tmp/mock-bin:$PATH" "$tmp/antigravity-sbx"
 )
 
-grep -Fq -- "--kit $ROOT/harnesses/antigravity-cli/kit shell $repo $ROOT:ro" "$MOCK_LOG"
+grep -Fq -- "--kit $ROOT/harnesses/antigravity-cli/kit opencode $repo $ROOT:ro" "$MOCK_LOG"

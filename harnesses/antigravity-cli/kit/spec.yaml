@@ -6,7 +6,7 @@ displayName: Antigravity SBX
 description: Development defaults for Antigravity CLI in Docker Sandboxes
 
 requires:
-  agent: shell
+  agent: opencode
 
 permissions:
   network:
