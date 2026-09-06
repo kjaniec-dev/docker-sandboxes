@@ -10,7 +10,7 @@ while [[ -L "$SOURCE" ]]; do
 done
 
 ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
-IMPLEMENTATION="$ROOT/harnesses/antigravity-cli/bin/antigravity-sbx"
+IMPLEMENTATION="$ROOT/harnesses/antigravity-cli/bin/agy-sbx"
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   source "$IMPLEMENTATION"

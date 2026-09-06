@@ -11,7 +11,7 @@ The shared toolchain lives in `shared/`. Each harness owns its agent-specific
 files under `harnesses/<name>/`:
 
 1. `Dockerfile` builds `claude-sbx:local`, `codex-sbx:local`,
-   `opencode-sbx:local`, or `antigravity-sbx:local`. It contains the toolchain
+   `opencode-sbx:local`, or `agy-sbx:local`. It contains the toolchain
    only; no agent configuration or credentials.
 2. `kit/spec.yaml` defines the network-egress allowlist and agent instructions.
    The kit is applied only when a sandbox is created.
@@ -24,7 +24,7 @@ Root commands in `bin/` are thin delegates:
 - `claude-sbx` → `harnesses/claude-code/bin/claude-code-sbx`
 - `codex-sbx` → `harnesses/codex/bin/codex-sbx`
 - `opencode-sbx` → `harnesses/opencode/bin/opencode-sbx`
-- `antigravity-sbx` → `harnesses/antigravity-cli/bin/antigravity-sbx`
+- `agy-sbx` → `harnesses/antigravity-cli/bin/agy-sbx`
 
 Do not bake Claude plugins, Codex/OpenCode/Antigravity MCP configuration,
 credentials, or session state into any image. Docker Sandboxes recreates
@@ -47,11 +47,11 @@ available.
   `claude-sbx:local`.
 - `make rebuild-codex` — rebuilds and loads `codex-sbx:local`.
 - `make rebuild-opencode` — rebuilds and loads `opencode-sbx:local`.
-- `make rebuild-antigravity` — rebuilds and loads `antigravity-sbx:local`.
+- `make rebuild-agy` — rebuilds and loads `agy-sbx:local`.
 - `make verify` — runs the Claude verification script. It is intended to run
   inside a sandbox via `sbx exec`, as described in `docs/usage.md`; it will
   fail on the host because sandbox-only tools are absent.
-  `make verify-opencode` and `make verify-antigravity` run the OpenCode and
+  `make verify-opencode` and `make verify-agy` run the OpenCode and
   Antigravity verification scripts.
 
 ## Non-obvious rules
@@ -66,7 +66,7 @@ available.
   `claude-<repo-slug>-<8-hex-path-digest>`,
   `codex-<repo-slug>-<8-hex-path-digest>`,
   `opencode-<repo-slug>-<8-hex-path-digest>`, and
-  `antigravity-<repo-slug>-<8-hex-path-digest>`. The launcher function
+  `agy-<repo-slug>-<8-hex-path-digest>`. The launcher function
   `sandbox_name_for_repo` defines the exact scheme used by tests.
 - All launchers exit with code `3` when `.worktrees/` is not ignored by Git in
   the target repository. Preserve this intentional guard.

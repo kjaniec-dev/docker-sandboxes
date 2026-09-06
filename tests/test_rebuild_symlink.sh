@@ -32,8 +32,8 @@ ln -s "$ROOT/bin/codex-sbx-rebuild" "$tmp/rebuild-codex"
 grep -Fq "docker build --pull -t codex-sbx:local -f $ROOT/harnesses/codex/Dockerfile $ROOT" "$MOCK_LOG"
 grep -Fq "docker image save codex-sbx:local -o $ROOT/.build/codex-sbx.tar" "$MOCK_LOG"
 
-ln -s "$ROOT/bin/antigravity-sbx-rebuild" "$tmp/rebuild-antigravity"
-"$tmp/rebuild-antigravity"
+ln -s "$ROOT/bin/agy-sbx-rebuild" "$tmp/rebuild-agy"
+"$tmp/rebuild-agy"
 
-grep -Fq "docker build --pull -t antigravity-sbx:local -f $ROOT/harnesses/antigravity-cli/Dockerfile $ROOT" "$MOCK_LOG"
-grep -Fq "docker image save antigravity-sbx:local -o $ROOT/.build/antigravity-sbx.tar" "$MOCK_LOG"
+grep -Fq "docker build --pull -t agy-sbx:local -f $ROOT/harnesses/antigravity-cli/Dockerfile $ROOT" "$MOCK_LOG"
+grep -Fq "docker image save agy-sbx:local -o $ROOT/.build/agy-sbx.tar" "$MOCK_LOG"

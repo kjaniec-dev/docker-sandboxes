@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for target in test verify rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-antigravity verify-opencode verify-antigravity; do
+for target in test verify rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-agy verify-opencode verify-agy; do
   grep -Eq "^${target}:" "$ROOT/Makefile" || {
     echo "missing Make target: $target" >&2
     exit 1
@@ -13,9 +13,9 @@ done
 grep -Fq './bin/claude-sbx-rebuild' "$ROOT/README.md"
 grep -Fq './bin/codex-sbx-rebuild' "$ROOT/README.md"
 grep -Fq '# Claude, Codex, OpenCode, and Antigravity Docker Sandboxes' "$ROOT/README.md"
-grep -Fq './bin/antigravity-sbx-rebuild' "$ROOT/README.md"
-grep -Fq 'ln -sfn "$PWD/bin/antigravity-sbx"' "$ROOT/README.md"
-grep -Fq 'antigravity-sbx' "$ROOT/README.md"
+grep -Fq './bin/agy-sbx-rebuild' "$ROOT/README.md"
+grep -Fq 'ln -sfn "$PWD/bin/agy-sbx"' "$ROOT/README.md"
+grep -Fq 'agy-sbx' "$ROOT/README.md"
 grep -Fq './bin/opencode-sbx-rebuild' "$ROOT/README.md"
 grep -Fq 'ln -sfn "$PWD/bin/opencode-sbx"' "$ROOT/README.md"
 grep -Fq 'opencode-sbx' "$ROOT/README.md"
@@ -53,13 +53,13 @@ for path in "$ROOT/harnesses/opencode/scripts/bootstrap.sh"; do
     exit 1
   }
 done
-grep -Fq 'antigravity-sbx' "$ROOT/docs/usage.md"
-grep -Fq 'ln -sfn "$PWD/bin/antigravity-sbx-rebuild"' "$ROOT/docs/usage.md"
-grep -Fq 'antigravity-sbx:local' "$ROOT/docs/usage.md"
-grep -Fq 'antigravity-<repo-slug>-<8-hex-path-digest>' "$ROOT/docs/usage.md"
-grep -Fq 'make rebuild-antigravity' "$ROOT/docs/usage.md"
+grep -Fq 'agy-sbx' "$ROOT/docs/usage.md"
+grep -Fq 'ln -sfn "$PWD/bin/agy-sbx-rebuild"' "$ROOT/docs/usage.md"
+grep -Fq 'agy-sbx:local' "$ROOT/docs/usage.md"
+grep -Fq 'agy-<repo-slug>-<8-hex-path-digest>' "$ROOT/docs/usage.md"
+grep -Fq 'make rebuild-agy' "$ROOT/docs/usage.md"
 grep -Fq 'GEMINI_API_KEY' "$ROOT/docs/usage.md"
-grep -Fq 'source /path/to/claude-sbx/bin/antigravity-sbx' "$ROOT/docs/usage.md"
+grep -Fq 'source /path/to/claude-sbx/bin/agy-sbx' "$ROOT/docs/usage.md"
 grep -Fq 'harnesses/antigravity-cli/scripts/verify.sh' "$ROOT/docs/usage.md"
 for path in "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"; do
   [[ -x "$path" ]] || {

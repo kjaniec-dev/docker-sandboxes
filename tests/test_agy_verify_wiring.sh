@@ -22,7 +22,7 @@ grep -Fq 'serena' "$VERIFY"
 grep -Fq 'superpowers' "$VERIFY"
 grep -Fq 'caveman' "$VERIFY"
 grep -Fq 'playwright-cli' "$VERIFY"
-grep -Fq 'antigravity-sbx verification passed' "$VERIFY"
+grep -Fq 'agy-sbx verification passed' "$VERIFY"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -87,7 +87,7 @@ run_verify() {
 }
 
 run_verify "$tmp/success"
-grep -Fxq 'antigravity-sbx verification passed' "$tmp/success"
+grep -Fxq 'agy-sbx verification passed' "$tmp/success"
 
 mock_agy_version='1.1.26'
 if run_verify "$tmp/agy-failure"; then
@@ -138,4 +138,4 @@ for failing_command in mvn gradle docker; do
   mock_fail_command=''
 done
 
-echo "test_antigravity_verify_wiring.sh: PASS"
+echo "test_agy_verify_wiring.sh: PASS"

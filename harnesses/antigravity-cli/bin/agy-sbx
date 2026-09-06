@@ -11,7 +11,7 @@ done
 
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-TEMPLATE="antigravity-sbx:local"
+TEMPLATE="agy-sbx:local"
 KIT="$ROOT/harnesses/antigravity-cli/kit"
 BOOTSTRAP="$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"
 VERIFY="$ROOT/harnesses/antigravity-cli/scripts/verify.sh"
@@ -23,7 +23,7 @@ sandbox_name_for_repo() {
   base="$(basename "$repo_root")"
   slug="$(printf '%s' "$base" | tr '[:upper:]_' '[:lower:]-' | sed -E 's/[^a-z0-9.+-]+/-/g; s/^-+//; s/-+$//')"
   digest="$(printf '%s' "$repo_root" | shasum -a 256 | awk '{print substr($1,1,8)}')"
-  printf 'antigravity-%s-%s\n' "$slug" "$digest"
+  printf 'agy-%s-%s\n' "$slug" "$digest"
 }
 
 repo_root_from_cwd() {
@@ -43,7 +43,7 @@ sandbox_exists() {
 }
 
 template_exists() {
-  sbx template ls | awk '$1 ~ /(^|\/)antigravity-sbx$/ && $2 == "local" { found = 1 } END { exit !found }'
+  sbx template ls | awk '$1 ~ /(^|\/)agy-sbx$/ && $2 == "local" { found = 1 } END { exit !found }'
 }
 
 workspace_mounts() {
@@ -66,35 +66,35 @@ verify_sandbox() {
 
 main() {
   command -v sbx >/dev/null 2>&1 || {
-    echo "antigravity-sbx: 'sbx' not found. Install/update Docker Desktop with Docker Sandboxes support." >&2
+    echo "agy-sbx: 'sbx' not found. Install/update Docker Desktop with Docker Sandboxes support." >&2
     exit 1
   }
 
   local repo_root name workspace
   local -a workspaces
   if ! repo_root="$(repo_root_from_cwd 2>/dev/null)"; then
-    echo "antigravity-sbx: run this command from inside a Git repository" >&2
+    echo "agy-sbx: run this command from inside a Git repository" >&2
     exit 2
   fi
 
   if ! ensure_worktrees_ignored "$repo_root"; then
     cat >&2 <<'MSG'
-antigravity-sbx: .worktrees/ is not ignored by Git.
+agy-sbx: .worktrees/ is not ignored by Git.
 
 Add this line to the repository's .gitignore:
 
 .worktrees/
 
-Then run antigravity-sbx again.
+Then run agy-sbx again.
 MSG
     exit 3
   fi
 
   if ! template_exists; then
     cat >&2 <<MSG
-antigravity-sbx: template '$TEMPLATE' is not loaded.
+agy-sbx: template '$TEMPLATE' is not loaded.
 Run:
-  $ROOT/bin/antigravity-sbx-rebuild
+  $ROOT/bin/agy-sbx-rebuild
 MSG
     exit 4
   fi
