@@ -7,7 +7,8 @@ target repository and agent.
 
 ## Architecture
 
-The shared toolchain lives in `shared/`. Each harness owns its agent-specific
+The shared toolchain and launcher/rebuild lifecycle live in `shared/`.
+Each harness owns its agent-specific
 files under `harnesses/<name>/`:
 
 1. `Dockerfile` builds `claude-sbx:local`, `codex-sbx:local`,
@@ -61,9 +62,11 @@ available.
 - Keep Node and Go versions synchronized in all harness Dockerfiles and all
   verification scripts. The current pins are Node `24.19.0` and Go `1.26.6`.
 - Existing sandboxes retain their old template and kit. After changing a
-  Dockerfile, shared toolchain script, or harness kit, rebuild the matching
-  template, run `sbx rm <name>`, then relaunch the matching command from the
-  target repository.
+  Dockerfile or shared toolchain script, rebuild the matching template and
+  recreate the sandbox. Kit changes need recreation, not an image rebuild.
+  Additive network fixes can be applied immediately with
+  `sbx policy allow network --sandbox <name> <domain>`; also update the kit
+  for future sandboxes. Launcher changes apply on the next launch.
 - Sandbox names are deterministic and distinct:
   `claude-<repo-slug>-<8-hex-path-digest>`,
   `codex-<repo-slug>-<8-hex-path-digest>`,
@@ -76,7 +79,7 @@ available.
 - Network egress is allowlisted per harness in
   `harnesses/<name>/kit/spec.yaml`. If bootstrap fails due to network policy,
   inspect `sbx policy log <sandbox-name>`, add only the required domain, and
-  recreate the sandbox.
+  apply a sandbox-scoped allow rule as described above.
 - OpenJDK 25, Maven, and Gradle are present in all templates and verified by
   all verification scripts.
 - All bootstrap scripts must remain idempotent because they are rerun for

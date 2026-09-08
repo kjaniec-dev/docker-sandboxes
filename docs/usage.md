@@ -3,7 +3,8 @@
 ## Requirements
 
 - macOS
-- Docker Desktop with Docker Sandboxes (`sbx`) support
+- Docker Sandboxes (`sbx`), recommended version 0.42.1 or newer
+- Docker Desktop / Docker Engine for building the custom images
 - Git
 
 Install Docker Sandboxes, check its platform requirements, and sign in by
@@ -15,6 +16,37 @@ Check the local installation:
 sbx version
 docker version
 ```
+
+`sbx` is a standalone installation. The host Docker daemon is needed for our
+image builds; sandbox execution uses the Docker Sandboxes runtime.
+
+## Docker Sandboxes 0.42.1
+
+Version 0.42.1 fixes proxy framing of HTTP/2 responses without bodies. Most
+new configuration features arrived in 0.42.0; see the official
+[release notes](https://docs.docker.com/ai/sandboxes/release-notes/).
+
+The five harnesses share their launcher lifecycle and image rebuild code in
+`shared/launcher.sh` and `shared/rebuild.sh`. Agent-specific commands,
+authentication, bootstrap scripts, and kits remain under each harness.
+Launcher-only updates apply to existing sandboxes on the next invocation.
+
+Our kits are `kind: mixin`, so `--kit` remains the supported syntax. The new
+positional kit syntax is for `kind: sandbox` kits. `sandbox.build` and kit
+`mixins:` composition are accepted by the schema but not implemented by the
+runtime, so custom images still need the rebuild commands below.
+
+`sbxenv.yaml` is useful for project-specific environments but isn't a drop-in
+replacement for these launchers: its lifecycle commands run on the host, and
+its environment file needs a suitable location relative to workspace mounts.
+Migrating requires a host smoke test for bootstrap ordering and agent arguments.
+We retain per-sandbox skills because the native shared skill store changes
+their ownership and sharing across sandboxes.
+
+Published ports now default to IPv4. Use `--publish 3000:3000/tcp` explicitly
+for IPv4 and IPv6. New sandbox Docker volumes default to 10 GB; set
+`DOCKER_SANDBOXES_DOCKER_SIZE=20g` before the first launch if more is needed.
+That variable does not resize an existing volume.
 
 ## Build the harness templates
 
@@ -386,7 +418,7 @@ Use a different port mapping as needed for application servers.
 ## Rebuild and recreate
 
 Existing sandboxes retain their current VM state and template. After changing a
-Dockerfile, shared toolchain script, or harness kit:
+Dockerfile or shared toolchain script:
 
 1. Rebuild the appropriate template with `claude-sbx-rebuild`,
     `codex-sbx-rebuild`, `agy-sbx-rebuild`, `junie-sbx-rebuild`,
@@ -394,8 +426,9 @@ Dockerfile, shared toolchain script, or harness kit:
 2. Remove that harness's existing sandbox with `sbx rm <sandbox-name>`.
 3. Run the matching harness command again from the target repository.
 
-Kit instructions and network policy apply only during sandbox creation, so a
-kit change also requires recreation.
+Kit changes require recreation to apply the complete updated kit, but do not
+require rebuilding the image. For an additive network permission, use the
+scoped policy command below to update an existing sandbox immediately.
 
 ## Add a future harness
 
@@ -420,16 +453,30 @@ allow, inspect the policy log:
 sbx policy log <sandbox-name>
 ```
 
-Add only the required domain to the appropriate harness kit, then recreate the
-sandbox. Claude bootstrap is idempotent and installs its plugins; Codex
+Add only the required domain to the appropriate harness kit for future
+sandboxes. To unblock an existing sandbox without losing its login or session,
+also apply the exact domain to its local policy:
+
+```bash
+sbx policy allow network --sandbox <sandbox-name> api.example.com
+```
+
+This adds an allow rule for that sandbox only. Removing a domain from a kit
+does not remove an existing local policy rule. Find its ID with
+`sbx policy ls --wide`, inspect it with `sbx policy inspect <rule-id>`, and
+remove it with `sbx policy rm network --sandbox <sandbox-name> --id <rule-id>`
+when tightening policy.
+
+Claude bootstrap is idempotent and installs its plugins; Codex
 bootstrap is also idempotent and registers Serena and Context7 when their MCP
 entries are missing or invalid.
 
 For Junie, HTTP 502 while submitting a prompt can result from a blocked
 inference gateway. Check the policy log for
 `ingrazzio-cloud-prod.labs.jb.gg:443`. The Junie kit allows that gateway and
-`resources.jetbrains.com`; sandboxes created with an older kit need recreation
-as described above. A blocked `oraios-software.de` request belongs to Serena's
+`resources.jetbrains.com`, with `oauth.account.jetbrains.com` for account login.
+Apply missing domains to an older sandbox with the scoped policy command above.
+A blocked `oraios-software.de` request belongs to Serena's
 usage reporting or dashboard news, not Junie inference, and does not require
 an allow rule to fix this issue.
 
