@@ -1,4 +1,4 @@
-.PHONY: test verify verify-opencode verify-agy rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-agy
+.PHONY: test verify verify-opencode verify-agy verify-junie rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-agy rebuild-junie
 
 test:
 	./tests/run.sh
@@ -11,6 +11,9 @@ verify-opencode:
 
 verify-agy:
 	./harnesses/antigravity-cli/scripts/verify.sh
+
+verify-junie:
+	./harnesses/junie/scripts/verify.sh
 
 rebuild:
 	$(MAKE) rebuild-claude
@@ -26,3 +29,6 @@ rebuild-opencode:
 
 rebuild-agy:
 	./bin/agy-sbx-rebuild
+
+rebuild-junie:
+	./bin/junie-sbx-rebuild

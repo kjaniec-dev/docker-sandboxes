@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+IMPLEMENTATION="$ROOT/harnesses/junie/bin/junie-sbx"
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  # The implementation path is resolved from the wrapper location above.
+  # shellcheck source=/dev/null
+  source "$IMPLEMENTATION"
+else
+  exec "$IMPLEMENTATION" "$@"
+fi

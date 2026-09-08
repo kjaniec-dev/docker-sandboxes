@@ -25,15 +25,17 @@ From this repository, build one or more templates:
 ./bin/codex-sbx-rebuild
 ./bin/opencode-sbx-rebuild
 ./bin/agy-sbx-rebuild
+./bin/junie-sbx-rebuild
 ```
 
 These commands pull the current agent base image, build `claude-sbx:local`,
-`codex-sbx:local`, `opencode-sbx:local`, and `agy-sbx:local`, export
+`codex-sbx:local`, `opencode-sbx:local`, `agy-sbx:local`, and `junie-sbx:local`, export
 their images under `.build/`, and load them into Docker Sandboxes.
 `make rebuild` is kept as a compatibility alias for the Claude rebuild; use
-`make rebuild-claude`, `make rebuild-codex`, `make rebuild-opencode`, or
-`make rebuild-agy` when choosing explicitly. (The Antigravity build
-uses the neutral shell base image plus a pinned Antigravity CLI release.)
+`make rebuild-claude`, `make rebuild-codex`, `make rebuild-opencode`,
+`make rebuild-agy`, or `make rebuild-junie` when choosing explicitly. The
+Antigravity and Junie builds use the neutral shell base image; Antigravity
+contains a pinned CLI release and Junie installs its CLI during bootstrap.
 
 ## Put commands on PATH
 
@@ -45,10 +47,12 @@ ln -sfn "$PWD/bin/claude-sbx" "$HOME/.local/bin/claude-sbx"
 ln -sfn "$PWD/bin/codex-sbx" "$HOME/.local/bin/codex-sbx"
 ln -sfn "$PWD/bin/opencode-sbx" "$HOME/.local/bin/opencode-sbx"
 ln -sfn "$PWD/bin/agy-sbx" "$HOME/.local/bin/agy-sbx"
+ln -sfn "$PWD/bin/junie-sbx" "$HOME/.local/bin/junie-sbx"
 ln -sfn "$PWD/bin/agy-sbx-rebuild" "$HOME/.local/bin/agy-sbx-rebuild"
 ln -sfn "$PWD/bin/claude-sbx-rebuild" "$HOME/.local/bin/claude-sbx-rebuild"
 ln -sfn "$PWD/bin/codex-sbx-rebuild" "$HOME/.local/bin/codex-sbx-rebuild"
 ln -sfn "$PWD/bin/opencode-sbx-rebuild" "$HOME/.local/bin/opencode-sbx-rebuild"
+ln -sfn "$PWD/bin/junie-sbx-rebuild" "$HOME/.local/bin/junie-sbx-rebuild"
 
 grep -q 'HOME/.local/bin' "$HOME/.zshrc" || \
   printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$HOME/.zshrc"
@@ -172,6 +176,37 @@ sbx secret set-custom \
 Do not put Google credentials in this repository, image, kit, or Antigravity
 config files.
 
+## First start: Junie
+
+Build the Junie template before creating its sandbox. Junie CLI authentication
+is handled interactively or with a Junie API key:
+
+```bash
+# In the harness repository
+sbx login
+./bin/junie-sbx-rebuild
+
+# In the target Git repository
+cd /path/to/target-repository
+grep -qxF '.worktrees/' .gitignore || echo '.worktrees/' >> .gitignore
+junie-sbx
+```
+
+For headless use, keep the key outside the repository and export it only for
+the launch. The wrapper passes it as a process environment variable inside the
+sandbox and supplies the auth flag there:
+
+```bash
+export JUNIE_API_KEY="..."
+junie-sbx
+unset JUNIE_API_KEY
+```
+
+Junie bootstrap registers Serena and Context7 in `~/.junie/mcp/mcp.json`,
+installs Superpowers and the pinned Caveman skill in `~/.junie/skills/`, and
+installs the Playwright CLI skills globally. Do not put Junie credentials,
+MCP configuration, or session state in the image or repository.
+
 ## Start a harness
 
 In the target Git repository, project-local worktrees must be ignored:
@@ -208,6 +243,12 @@ Start Antigravity CLI:
 agy-sbx
 ```
 
+Start Junie:
+
+```bash
+junie-sbx
+```
+
 All harnesses use direct workspace mode: the target repository is mounted
 read/write at its original absolute path. They intentionally do not use
 `--clone`. When the target differs from this repository, the harness source is
@@ -223,10 +264,11 @@ Sandbox names are deterministic but separate:
 | Codex | `codex-<repo-slug>-<8-hex-path-digest>` | `codex-sbx:local` |
 | OpenCode | `opencode-<repo-slug>-<8-hex-path-digest>` | `opencode-sbx:local` |
 | Antigravity CLI | `agy-<repo-slug>-<8-hex-path-digest>` | `agy-sbx:local` |
+| Junie | `junie-<repo-slug>-<8-hex-path-digest>` | `junie-sbx:local` |
 
 Running a command again reattaches to that harness's sandbox. Claude, Codex,
-OpenCode, and Antigravity never share an agent-managed configuration directory
-or sandbox identity.
+OpenCode, Antigravity, and Junie never share an agent-managed configuration
+directory or sandbox identity.
 
 ## Authentication
 
@@ -249,6 +291,10 @@ OpenCode Zen requires `sbx secret set-custom` with host `opencode.ai`; its
 For Antigravity CLI, use Google Sign-In inside the sandbox (once per sandbox
 lifetime) or the `GEMINI_API_KEY` flow from
 [First start: Antigravity CLI](#first-start-antigravity-cli).
+
+For Junie, pass `--auth="$JUNIE_API_KEY"` or
+`--auth-license="$JUNIE_LICENSE_KEY"` at runtime. Keep credentials outside the
+repository and image.
 
 ## Worktrees and IDEs
 
@@ -305,6 +351,15 @@ name="$(sandbox_name_for_repo "$repo_root")"
 sbx exec "$name" bash /path/to/claude-sbx/harnesses/antigravity-cli/scripts/verify.sh
 ```
 
+For Junie:
+
+```bash
+source /path/to/claude-sbx/bin/junie-sbx
+repo_root="$(git rev-parse --show-toplevel)"
+name="$(sandbox_name_for_repo "$repo_root")"
+sbx exec "$name" bash /path/to/claude-sbx/harnesses/junie/scripts/verify.sh
+```
+
 Each verification checks its agent CLI plus the shared toolchain, pinned
 Node/Go versions, Serena, Playwright CLI, OpenJDK 25, Maven, Gradle, and Docker
 Compose. Codex bootstrap idempotently registers Serena and Context7 as MCP
@@ -313,7 +368,10 @@ servers, installs Superpowers and the pinned Caveman skill into
 Antigravity bootstrap idempotently registers Serena and Context7 and links
 Superpowers, Caveman, and Playwright skills into Antigravity's global skill
 directory. The Codex kit instructs the agent to use `playwright-cli` for
-browser and frontend validation.
+directory. The Junie bootstrap registers Serena and Context7 in
+`~/.junie/mcp/mcp.json` and links Superpowers, Caveman, and Playwright skills
+into `~/.junie/skills/`. The Codex kit instructs the agent to use
+`playwright-cli` for browser and frontend validation.
 
 ## Ports
 
@@ -331,8 +389,8 @@ Existing sandboxes retain their current VM state and template. After changing a
 Dockerfile, shared toolchain script, or harness kit:
 
 1. Rebuild the appropriate template with `claude-sbx-rebuild`,
-   `codex-sbx-rebuild`, `agy-sbx-rebuild`,
-   `make rebuild-opencode`, or `make rebuild-agy`.
+    `codex-sbx-rebuild`, `agy-sbx-rebuild`, `junie-sbx-rebuild`,
+    `make rebuild-opencode`, `make rebuild-agy`, or `make rebuild-junie`.
 2. Remove that harness's existing sandbox with `sbx rm <sandbox-name>`.
 3. Run the matching harness command again from the target repository.
 
@@ -366,3 +424,17 @@ Add only the required domain to the appropriate harness kit, then recreate the
 sandbox. Claude bootstrap is idempotent and installs its plugins; Codex
 bootstrap is also idempotent and registers Serena and Context7 when their MCP
 entries are missing or invalid.
+
+For Junie, HTTP 502 while submitting a prompt can result from a blocked
+inference gateway. Check the policy log for
+`ingrazzio-cloud-prod.labs.jb.gg:443`. The Junie kit allows that gateway and
+`resources.jetbrains.com`; sandboxes created with an older kit need recreation
+as described above. A blocked `oraios-software.de` request belongs to Serena's
+usage reporting or dashboard news, not Junie inference, and does not require
+an allow rule to fix this issue.
+
+Junie ships its own Java runtime. The launcher uses the system Java trust store
+(`/etc/ssl/certs/java/cacerts`) so Junie trusts the Docker Sandboxes proxy CA.
+If JetBrains Account login reports a secure connection failure, launch with
+`junie-sbx` rather than invoking the bundled Junie executable directly. This
+launcher change applies to existing sandboxes without rebuilding or recreation.
