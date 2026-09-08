@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for target in test verify rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-agy verify-opencode verify-agy; do
+for target in test verify rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-agy rebuild-junie verify-opencode verify-agy verify-junie; do
   grep -Eq "^${target}:" "$ROOT/Makefile" || {
     echo "missing Make target: $target" >&2
     exit 1
@@ -12,10 +12,12 @@ done
 
 grep -Fq './bin/claude-sbx-rebuild' "$ROOT/README.md"
 grep -Fq './bin/codex-sbx-rebuild' "$ROOT/README.md"
-grep -Fq '# Claude, Codex, OpenCode, and Antigravity Docker Sandboxes' "$ROOT/README.md"
+grep -Fq '# Claude, Codex, OpenCode, Antigravity, and Junie Docker Sandboxes' "$ROOT/README.md"
 grep -Fq './bin/agy-sbx-rebuild' "$ROOT/README.md"
 grep -Fq 'ln -sfn "$PWD/bin/agy-sbx"' "$ROOT/README.md"
 grep -Fq 'agy-sbx' "$ROOT/README.md"
+grep -Fq './bin/junie-sbx-rebuild' "$ROOT/README.md"
+grep -Fq 'junie-sbx' "$ROOT/README.md"
 grep -Fq './bin/opencode-sbx-rebuild' "$ROOT/README.md"
 grep -Fq 'ln -sfn "$PWD/bin/opencode-sbx"' "$ROOT/README.md"
 grep -Fq 'opencode-sbx' "$ROOT/README.md"
@@ -61,9 +63,20 @@ grep -Fq 'make rebuild-agy' "$ROOT/docs/usage.md"
 grep -Fq 'GEMINI_API_KEY' "$ROOT/docs/usage.md"
 grep -Fq 'source /path/to/claude-sbx/bin/agy-sbx' "$ROOT/docs/usage.md"
 grep -Fq 'harnesses/antigravity-cli/scripts/verify.sh' "$ROOT/docs/usage.md"
+grep -Fq 'junie-sbx' "$ROOT/docs/usage.md"
+grep -Fq 'junie-sbx:local' "$ROOT/docs/usage.md"
+grep -Fq 'junie-<repo-slug>-<8-hex-path-digest>' "$ROOT/docs/usage.md"
+grep -Fq 'make rebuild-junie' "$ROOT/docs/usage.md"
+grep -Fq 'harnesses/junie/scripts/verify.sh' "$ROOT/docs/usage.md"
 for path in "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"; do
   [[ -x "$path" ]] || {
     echo "missing executable Antigravity script: $path" >&2
+    exit 1
+  }
+done
+for path in "$ROOT/harnesses/junie/scripts/bootstrap.sh"; do
+  [[ -x "$path" ]] || {
+    echo "missing executable Junie script: $path" >&2
     exit 1
   }
 done

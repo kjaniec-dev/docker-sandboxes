@@ -1,7 +1,7 @@
-# Claude, Codex, OpenCode, and Antigravity Docker Sandboxes
+# Claude, Codex, OpenCode, Antigravity, and Junie Docker Sandboxes
 
-Reusable Docker Sandbox harnesses for Claude Code, Codex, OpenCode, and
-Antigravity CLI. Each harness gives the selected Git repository a writable
+Reusable Docker Sandbox harnesses for Claude Code, Codex, OpenCode, Antigravity
+CLI, and Junie. Each harness gives the selected Git repository a writable
 workspace inside its own sandbox while the rest of the host stays outside
 that workspace.
 
@@ -21,6 +21,7 @@ Build the templates from this repository:
 ./bin/codex-sbx-rebuild
 ./bin/opencode-sbx-rebuild
 ./bin/agy-sbx-rebuild
+./bin/junie-sbx-rebuild
 ```
 
 Optionally make the commands available on your `PATH`:
@@ -31,10 +32,12 @@ ln -sfn "$PWD/bin/claude-sbx" "$HOME/.local/bin/claude-sbx"
 ln -sfn "$PWD/bin/codex-sbx" "$HOME/.local/bin/codex-sbx"
 ln -sfn "$PWD/bin/opencode-sbx" "$HOME/.local/bin/opencode-sbx"
 ln -sfn "$PWD/bin/agy-sbx" "$HOME/.local/bin/agy-sbx"
+ln -sfn "$PWD/bin/junie-sbx" "$HOME/.local/bin/junie-sbx"
 ln -sfn "$PWD/bin/agy-sbx-rebuild" "$HOME/.local/bin/agy-sbx-rebuild"
 ln -sfn "$PWD/bin/claude-sbx-rebuild" "$HOME/.local/bin/claude-sbx-rebuild"
 ln -sfn "$PWD/bin/codex-sbx-rebuild" "$HOME/.local/bin/codex-sbx-rebuild"
 ln -sfn "$PWD/bin/opencode-sbx-rebuild" "$HOME/.local/bin/opencode-sbx-rebuild"
+ln -sfn "$PWD/bin/junie-sbx-rebuild" "$HOME/.local/bin/junie-sbx-rebuild"
 ```
 
 Then, from any Git repository, ensure project-local worktrees are ignored and
@@ -49,6 +52,8 @@ codex-sbx
 opencode-sbx
 # or
 agy-sbx
+# or
+junie-sbx
 ```
 
 The `grep`/`echo` command modifies the target repository's `.gitignore` when
