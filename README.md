@@ -14,6 +14,10 @@ Playwright CLI skills for Codex.
 
 ## Quick start
 
+Use Docker Sandboxes 0.42.1 or newer. Docker is also needed to build the custom
+images. All harnesses share one launcher lifecycle and rebuild implementation;
+their public commands stay the same.
+
 Build the templates from this repository:
 
 ```bash
