@@ -28,7 +28,20 @@ sandbox_exists() {
 }
 
 template_exists() {
-  sbx template ls | awk -v repository="${TEMPLATE%:*}" -v tag="${TEMPLATE##*:}" '
+  local repository="${TEMPLATE%:*}"
+  local tag="${TEMPLATE##*:}"
+  local listing
+
+  # Docker Sandboxes 0.42.0+ provides a stable JSON shape. Keep a text-table
+  # fallback for older CLIs and lightweight test stubs.
+  if listing="$(sbx template ls --json 2>/dev/null)" && [[ -n "$listing" ]] &&
+    jq -e --arg repository "$repository" --arg tag "$tag" \
+      'any(.images[]?; ((.repository | split("/") | last) == $repository and .tag == $tag))' \
+      <<<"$listing" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  sbx template ls | awk -v repository="$repository" -v tag="$tag" '
     { n = split($1, parts, "/") }
     parts[n] == repository && $2 == tag { found = 1 }
     END { exit !found }
