@@ -28,3 +28,42 @@ if ensure_junie_mcp_config "$config"; then
   echo 'Junie bootstrap accepted a conflicting Serena MCP entry' >&2
   exit 1
 fi
+
+mkdir -p "$tmp/bin"
+cat >"$tmp/bin/junie" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+MOCK
+chmod +x "$tmp/bin/junie"
+for command_name in curl git playwright-cli; do
+  ln -s junie "$tmp/bin/$command_name"
+done
+
+shared_skills="$tmp/shared-skills"
+for skill in using-superpowers brainstorming caveman playwright-cli; do
+  mkdir -p "$shared_skills/$skill"
+  printf '%s\n' "$skill" >"$shared_skills/$skill/SKILL.md"
+done
+
+bootstrap_home="$tmp/bootstrap-home"
+mkdir -p "$bootstrap_home"
+bootstrap_output="$tmp/bootstrap-output.log"
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" SHARED_SKILLS_ROOT="$shared_skills" \
+  bash "$ROOT/harnesses/junie/scripts/bootstrap.sh" >"$bootstrap_output"
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" SHARED_SKILLS_ROOT="$shared_skills" \
+  bash "$ROOT/harnesses/junie/scripts/bootstrap.sh" >>"$bootstrap_output"
+
+grep -Fxq 'Junie bootstrap setup complete.' "$bootstrap_output"
+skills_link="$bootstrap_home/.junie/skills"
+[[ -L "$skills_link" ]]
+[[ "$(readlink "$skills_link")" == "$shared_skills" ]]
+for skill in using-superpowers brainstorming caveman playwright-cli; do
+  [[ -f "$skills_link/$skill/SKILL.md" ]]
+done
+jq -e '
+  .mcpServers.serena.command == "serena" and
+  .mcpServers.context7.url == "https://mcp.context7.com/mcp"
+' "$bootstrap_home/.junie/mcp/mcp.json" >/dev/null
+[[ ! -e "$bootstrap_home/.cache/claude-sbx/junie-bootstrap-v1" ]]
+
+echo 'test_junie_bootstrap.sh: PASS'

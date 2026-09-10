@@ -18,6 +18,12 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
+if [[ -z "${HARNESS_ROOT:-}" ]]; then
+  HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+fi
+# shellcheck source=/dev/null
+source "$HARNESS_ROOT/shared/skills.sh"
+
 refresh_official_marketplace
 plugin_list="$(claude plugin list 2>/dev/null || true)"
 
@@ -44,8 +50,6 @@ else
   echo "already installed: caveman@caveman"
 fi
 
-playwright-cli install --skills
-mkdir -p "$HOME/.cache/claude-sbx"
-touch "$HOME/.cache/claude-sbx/bootstrap-v1"
+link_shared_skills "$HOME/.claude/skills"
 
 echo "Claude plugin/bootstrap setup complete."

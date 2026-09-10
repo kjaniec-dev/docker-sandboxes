@@ -64,62 +64,26 @@ mkdir -p "$tmp/bin"
 cat >"$tmp/bin/git" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$*" >>"$MOCK_GIT_LOG"
-if [[ "${1:-}" == "-C" && "${3:-}" == "rev-parse" ]]; then
-  printf '%s\n' "$MOCK_CAVEMAN_REVISION"
-  exit 0
-fi
-if [[ "${1:-}" == "clone" ]]; then
-  target="${@: -1}"
-  mkdir -p "$target/.git" "$target/skills" "$target/skills/caveman" "$target/skills/superpowers"
-  exit 0
-fi
-if [[ "${1:-}" == "-C" && "${3:-}" == "pull" ]]; then
-  if [[ "$2" == */caveman ]]; then
-    exit 1
-  fi
-  exit 0
-fi
+printf '%s\n' "$*" >>"$MOCK_FORBIDDEN_LOG"
 exit 1
 MOCK
 chmod +x "$tmp/bin/git"
 cat >"$tmp/bin/playwright-cli" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$*" >>"$MOCK_PLAYWRIGHT_LOG"
+printf '%s\n' "$*" >>"$MOCK_FORBIDDEN_LOG"
+exit 1
 MOCK
 chmod +x "$tmp/bin/playwright-cli"
 
-export MOCK_GIT_LOG="$tmp/git.log"
-export MOCK_CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"
-export MOCK_PLAYWRIGHT_LOG="$tmp/playwright.log"
+export MOCK_FORBIDDEN_LOG="$tmp/forbidden.log"
 PATH="$tmp/bin:$PATH"
 
-existing="$tmp/existing"
-mkdir -p "$existing/.git"
-ensure_git_checkout "$existing" https://example.test/repo.git
-grep -Fq -- "-C $existing pull --ff-only" "$MOCK_GIT_LOG"
-
-superpowers="$tmp/superpowers"
-ensure_git_checkout "$superpowers" https://github.com/obra/superpowers.git
-grep -Fq -- "clone --depth=1 https://github.com/obra/superpowers.git $superpowers" "$MOCK_GIT_LOG"
-
-caveman="$tmp/caveman"
-ensure_git_checkout "$caveman" https://github.com/JuliusBrussee/caveman.git v2.2.0
-grep -Fq -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $caveman" "$MOCK_GIT_LOG"
-ensure_git_checkout "$caveman" https://github.com/JuliusBrussee/caveman.git v2.2.0
-[[ "$(grep -Fc -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $caveman" "$MOCK_GIT_LOG")" == 1 ]]
-if grep -Fq -- "-C $caveman pull --ff-only" "$MOCK_GIT_LOG"; then
-  echo "pinned Caveman checkout was pulled on second run" >&2
-  exit 1
-fi
-
-non_git="$tmp/non-git"
-mkdir -p "$non_git"
-if ensure_git_checkout "$non_git" https://example.test/repo.git; then
-  echo "non-git checkout path unexpectedly accepted" >&2
-  exit 1
-fi
+shared_skills="$tmp/shared-skills"
+for skill in using-superpowers brainstorming caveman playwright-cli; do
+  mkdir -p "$shared_skills/$skill"
+  printf '%s\n' "$skill" >"$shared_skills/$skill/SKILL.md"
+done
 
 bootstrap_home="$tmp/bootstrap-home"
 mkdir -p "$bootstrap_home/.config/opencode"
@@ -130,21 +94,21 @@ bootstrap_jsonc="$bootstrap_home/.config/opencode/opencode.jsonc"
 printf '%s\n' '{"jsoncOnly":true}' >"$bootstrap_jsonc"
 bootstrap_jsonc_before="$(cksum <"$bootstrap_jsonc")"
 bootstrap_output="$tmp/bootstrap-output.log"
-HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" bash "$ROOT/harnesses/opencode/scripts/bootstrap.sh" >"$bootstrap_output"
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" SHARED_SKILLS_ROOT="$shared_skills" \
+  bash "$ROOT/harnesses/opencode/scripts/bootstrap.sh" >"$bootstrap_output"
 [[ "$(cksum <"$bootstrap_kit_config")" == "$bootstrap_kit_config_before" ]]
 printf '%s\n' '{"mcp":{"gateway":{"type":"remote","url":"https://gateway.example.test/mcp"}}}' >"$bootstrap_kit_config"
 bootstrap_gateway_before="$(cksum <"$bootstrap_kit_config")"
-HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" bash "$ROOT/harnesses/opencode/scripts/bootstrap.sh" >>"$bootstrap_output"
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" SHARED_SKILLS_ROOT="$shared_skills" \
+  bash "$ROOT/harnesses/opencode/scripts/bootstrap.sh" >>"$bootstrap_output"
 
 grep -Fxq 'OpenCode bootstrap setup complete.' "$bootstrap_output"
-[[ -d "$bootstrap_home/.opencode/superpowers/.git" ]]
-[[ -d "$bootstrap_home/.opencode/caveman/.git" ]]
-[[ -L "$bootstrap_home/.agents/skills/superpowers" ]]
-[[ -L "$bootstrap_home/.agents/skills/caveman" ]]
-[[ "$(readlink "$bootstrap_home/.agents/skills/superpowers")" == "$bootstrap_home/.opencode/superpowers/skills" ]]
-[[ "$(readlink "$bootstrap_home/.agents/skills/caveman")" == "$bootstrap_home/.opencode/caveman/skills/caveman" ]]
-grep -Fq -- 'install --skills agents --global' "$MOCK_PLAYWRIGHT_LOG"
-[[ "$(wc -l <"$MOCK_PLAYWRIGHT_LOG" | tr -d ' ')" == 2 ]]
+skills_link="$bootstrap_home/.config/opencode/skills"
+[[ -L "$skills_link" ]]
+[[ "$(readlink "$skills_link")" == "$shared_skills" ]]
+for skill in using-superpowers brainstorming caveman playwright-cli; do
+  [[ -f "$skills_link/$skill/SKILL.md" ]]
+done
 jq -e '
   .["$schema"] == "https://opencode.ai/config.json" and
   (.mcp | keys == ["context7", "serena"]) and
@@ -158,12 +122,7 @@ jq -e '
 jq -e '. == {"mcp":{"gateway":{"type":"remote","url":"https://gateway.example.test/mcp"}}}' "$bootstrap_kit_config" >/dev/null
 [[ "$(cksum <"$bootstrap_kit_config")" == "$bootstrap_gateway_before" ]]
 [[ "$(cksum <"$bootstrap_jsonc")" == "$bootstrap_jsonc_before" ]]
-[[ -f "$bootstrap_home/.cache/claude-sbx/opencode-bootstrap-v1" ]]
-[[ "$(grep -Fc -- "clone --depth=1 https://github.com/obra/superpowers.git $bootstrap_home/.opencode/superpowers" "$MOCK_GIT_LOG")" == 1 ]]
-[[ "$(grep -Fc -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $bootstrap_home/.opencode/caveman" "$MOCK_GIT_LOG")" == 1 ]]
-if grep -Fq -- "-C $bootstrap_home/.opencode/caveman pull --ff-only" "$MOCK_GIT_LOG"; then
-  echo "main bootstrap pulled pinned Caveman checkout" >&2
-  exit 1
-fi
+[[ ! -e "$bootstrap_home/.cache/claude-sbx/opencode-bootstrap-v1" ]]
+[[ ! -s "$MOCK_FORBIDDEN_LOG" ]]
 
 echo "test_opencode_bootstrap.sh: PASS"

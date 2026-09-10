@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CAVEMAN_TAG="v2.2.0"
-CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"
-
 check_jsonc_managed_entries() {
   local config_file="$1"
 
@@ -169,59 +166,19 @@ ensure_opencode_config() {
   mv -f "$temporary_file" "$config_file"
 }
 
-ensure_git_checkout() {
-  if [[ $# -lt 2 || $# -gt 3 ]]; then
-    printf 'OpenCode bootstrap: usage: ensure_git_checkout <directory> <url> [<ref>]\n' >&2
-    return 2
-  fi
-
-  local directory="$1"
-  local url="$2"
-  local ref="${3:-}"
-
-  if [[ -e "$directory/.git" ]]; then
-    if [[ -z "$ref" ]]; then
-      git -C "$directory" pull --ff-only
-    fi
-  elif [[ ! -e "$directory" ]]; then
-    if [[ -n "$ref" ]]; then
-      git clone --depth=1 --branch "$ref" "$url" "$directory"
-    else
-      git clone --depth=1 "$url" "$directory"
-    fi
-  else
-    printf 'OpenCode bootstrap: refusing to replace non-git %s\n' "$directory" >&2
-    return 1
-  fi
-}
-
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-superpowers_dir="$HOME/.opencode/superpowers"
-ensure_git_checkout \
-  "$superpowers_dir" \
-  https://github.com/obra/superpowers.git
-
-caveman_dir="$HOME/.opencode/caveman"
-ensure_git_checkout \
-  "$caveman_dir" \
-  https://github.com/JuliusBrussee/caveman.git \
-  "$CAVEMAN_TAG"
-if [[ "$(git -C "$caveman_dir" rev-parse HEAD)" != "$CAVEMAN_REVISION" ]]; then
-  printf 'OpenCode bootstrap: unexpected Caveman revision in %s\n' "$caveman_dir" >&2
-  exit 1
+if [[ -z "${HARNESS_ROOT:-}" ]]; then
+  HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 fi
+# shellcheck source=/dev/null
+source "$HARNESS_ROOT/shared/skills.sh"
 
-mkdir -p "$HOME/.agents/skills"
-ln -sfn "$superpowers_dir/skills" "$HOME/.agents/skills/superpowers"
-ln -sfn "$caveman_dir/skills/caveman" "$HOME/.agents/skills/caveman"
-playwright-cli install --skills agents --global
+link_shared_skills "$HOME/.config/opencode/skills"
 
 mkdir -p "$HOME/.config/opencode"
 ensure_opencode_config "$HOME/.config/opencode/config.json"
-mkdir -p "$HOME/.cache/claude-sbx"
-touch "$HOME/.cache/claude-sbx/opencode-bootstrap-v1"
 
 printf '%s\n' 'OpenCode bootstrap setup complete.'

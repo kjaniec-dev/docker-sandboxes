@@ -37,6 +37,7 @@ corepack enable
 corepack prepare pnpm@10 --activate
 npm install -g @playwright/cli@latest
 npx -y playwright@latest install --with-deps chromium
+npm cache clean --force
 
 curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       -o /usr/share/keyrings/githubcli-archive-keyring.gpg

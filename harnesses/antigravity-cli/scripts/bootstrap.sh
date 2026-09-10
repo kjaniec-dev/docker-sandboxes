@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CAVEMAN_TAG="v2.2.0"
-CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"
-
 check_agy_mcp_managed_entries() {
   local config_file="$1"
   local conflicts
@@ -101,66 +98,18 @@ ensure_agy_mcp_config() {
   mv -f "$temporary_file" "$config_file"
 }
 
-ensure_git_checkout() {
-  if [[ $# -lt 2 || $# -gt 3 ]]; then
-    printf 'Antigravity bootstrap: usage: ensure_git_checkout <directory> <url> [<ref>]\n' >&2
-    return 2
-  fi
-
-  local directory="$1"
-  local url="$2"
-  local ref="${3:-}"
-
-  if [[ -e "$directory/.git" ]]; then
-    if [[ -z "$ref" ]]; then
-      git -C "$directory" pull --ff-only
-    fi
-  elif [[ ! -e "$directory" ]]; then
-    if [[ -n "$ref" ]]; then
-      git clone --depth=1 --branch "$ref" "$url" "$directory"
-    else
-      git clone --depth=1 "$url" "$directory"
-    fi
-  else
-    printf 'Antigravity bootstrap: refusing to replace non-git %s\n' "$directory" >&2
-    return 1
-  fi
-}
-
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-superpowers_dir="$HOME/.gemini/superpowers"
-ensure_git_checkout \
-  "$superpowers_dir" \
-  https://github.com/obra/superpowers.git
-
-caveman_dir="$HOME/.gemini/caveman"
-ensure_git_checkout \
-  "$caveman_dir" \
-  https://github.com/JuliusBrussee/caveman.git \
-  "$CAVEMAN_TAG"
-if [[ "$(git -C "$caveman_dir" rev-parse HEAD)" != "$CAVEMAN_REVISION" ]]; then
-  printf 'Antigravity bootstrap: unexpected Caveman revision in %s\n' "$caveman_dir" >&2
-  exit 1
+if [[ -z "${HARNESS_ROOT:-}" ]]; then
+  HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 fi
+# shellcheck source=/dev/null
+source "$HARNESS_ROOT/shared/skills.sh"
 
-skills_dir="$HOME/.gemini/config/skills"
-mkdir -p "$skills_dir"
-for skill_path in "$superpowers_dir"/skills/*/; do
-  skill_path="${skill_path%/}"
-  [[ -d "$skill_path" ]] || continue
-  ln -sfn "$skill_path" "$skills_dir/$(basename "$skill_path")"
-done
-ln -sfn "$caveman_dir/skills/caveman" "$skills_dir/caveman"
-
-playwright-cli install --skills agents --global
-ln -sfn "$HOME/.agents/skills/playwright-cli" "$skills_dir/playwright-cli"
+link_shared_skills "$HOME/.gemini/config/skills"
 
 ensure_agy_mcp_config "$HOME/.gemini/config/mcp_config.json"
-
-mkdir -p "$HOME/.cache/claude-sbx"
-touch "$HOME/.cache/claude-sbx/antigravity-bootstrap-v1"
 
 printf '%s\n' 'Antigravity bootstrap setup complete.'

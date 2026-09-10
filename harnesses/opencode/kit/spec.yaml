@@ -1,12 +1,28 @@
 schemaVersion: "2"
-kind: mixin
+kind: sandbox
 name: opencode-sbx
 version: "1.0.0"
 displayName: OpenCode SBX
 description: Development defaults for OpenCode in Docker Sandboxes
 
-requires:
-  agent: opencode
+extends: opencode
+
+args:
+  harness_root:
+    required: true
+  skills_root:
+    required: true
+
+environment:
+  variables:
+    HARNESS_ROOT: ${{ kit.args.harness_root }}
+    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
+
+setup:
+  install:
+    - command: 'bash "$HARNESS_ROOT/harnesses/opencode/scripts/bootstrap.sh"'
+      user: "1000"
+      description: Configure integrations and shared skills
 
 permissions:
   network:
@@ -40,6 +56,7 @@ permissions:
       - api.openrouter.ai
 
 agentInstructions:
+  filename: AGENTS.md
   content: |
     This OpenCode sandbox directly mounts the host Git repository read/write.
 

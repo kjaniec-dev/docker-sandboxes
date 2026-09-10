@@ -26,15 +26,13 @@ grep -Fq 'agy-sbx verification passed' "$VERIFY"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/bin" \
-  "$tmp/home/.gemini/config/skills/caveman" \
-  "$tmp/home/.gemini/config/skills/playwright-cli" \
-  "$tmp/home/.gemini/superpowers/skills/brainstorming"
-touch "$tmp/home/.gemini/config/skills/caveman/SKILL.md" \
-  "$tmp/home/.gemini/config/skills/playwright-cli/SKILL.md" \
-  "$tmp/home/.gemini/superpowers/skills/brainstorming/SKILL.md"
-ln -s "$tmp/home/.gemini/superpowers/skills/brainstorming" \
-  "$tmp/home/.gemini/config/skills/brainstorming"
+mkdir -p "$tmp/bin" "$tmp/shared-skills"
+for skill in using-superpowers brainstorming caveman playwright-cli; do
+  mkdir -p "$tmp/shared-skills/$skill"
+  touch "$tmp/shared-skills/$skill/SKILL.md"
+done
+mkdir -p "$tmp/home/.gemini/config"
+ln -s "$tmp/shared-skills" "$tmp/home/.gemini/config/skills"
 printf '%s\n' '{"mcpServers":{"serena":{"command":"serena","args":["start-mcp-server","--context=ide-assistant","--project-from-cwd"],"disabled":false},"context7":{"serverUrl":"https://mcp.context7.com/mcp","disabled":false}}}' \
   >"$tmp/home/.gemini/config/mcp_config.json"
 
@@ -114,14 +112,13 @@ fi
 grep -Fq 'missing Antigravity skill: playwright-cli' "$tmp/skill-failure.err"
 touch "$tmp/home/.gemini/config/skills/playwright-cli/SKILL.md"
 
-rm "$tmp/home/.gemini/config/skills/brainstorming"
+rm "$tmp/shared-skills/using-superpowers/SKILL.md"
 if run_verify "$tmp/superpowers-failure"; then
-  echo 'missing Superpowers skill link was not detected' >&2
+  echo 'missing Superpowers skill was not detected' >&2
   exit 1
 fi
 grep -Fq 'missing Antigravity skill: superpowers' "$tmp/superpowers-failure.err"
-ln -s "$tmp/home/.gemini/superpowers/skills/brainstorming" \
-  "$tmp/home/.gemini/config/skills/brainstorming"
+touch "$tmp/shared-skills/using-superpowers/SKILL.md"
 
 for failing_command in mvn gradle docker; do
   mock_fail_command="$failing_command"

@@ -8,15 +8,15 @@ that workspace.
 All harnesses provide the same development toolchain: Node.js 24.19.0, Go
 1.26.6, Python and uv, Serena, Docker Engine and Compose, Playwright CLI,
 OpenJDK 25, Maven, Gradle, and common Git, database, shell, and search tools.
-The Codex bootstrap registers Serena and Context7 as MCP servers, installs
-Superpowers and Caveman into native Codex skill discovery, and installs the
-Playwright CLI skills for Codex.
+All five agents use one shared `sbx` skills store with Superpowers, pinned
+Caveman and Playwright CLI skills. Agent-specific MCP registrations and Claude
+plugins remain in sandbox bootstrap scripts.
 
 ## Quick start
 
-Use Docker Sandboxes 0.42.1 or newer. Docker is also needed to build the custom
-images. All harnesses share one launcher lifecycle and rebuild implementation;
-their public commands stay the same.
+Requires Docker Sandboxes 0.42.1 or newer, Git and jq on the host, plus Docker
+to build the custom images. Full sandbox kits configure each agent;
+`sbx create` provisions missing instances from the kit and `sbx run --name` reattaches; no generated environment files are needed. The public launcher commands stay the same.
 
 Build the templates from this repository:
 
@@ -27,6 +27,19 @@ Build the templates from this repository:
 ./bin/agy-sbx-rebuild
 ./bin/junie-sbx-rebuild
 ```
+
+Skills install automatically on first launch. To install them ahead of time or
+update Superpowers and Playwright later (Caveman stays pinned):
+
+```bash
+./bin/sbx-skills
+./bin/sbx-skills --update
+```
+
+Migrating from the old launchers requires removing each old sandbox once with
+`sbx rm <sandbox-name>` and launching it again. This discards its sessions and
+sandbox-local configuration, not the mounted repository. Existing toolchain
+images can be reused; this migration alone does not require rebuilding them.
 
 Optionally make the commands available on your `PATH`:
 
@@ -73,5 +86,7 @@ The selected repository is mounted read/write, so an agent can modify or delete
 files in that repository, including Git metadata. Other host paths are not
 exposed unless explicitly added as workspaces. This infrastructure repository
 is mounted read-only when it differs from the target repository, so harness
-bootstrap and verification scripts remain available. Authentication is managed
-outside the images; do not commit credentials or session state.
+bootstrap and verification scripts remain available. The shared skills store
+is also mounted read/write: skill changes made by one sandbox affect the host
+store and other sandboxes. Authentication is managed outside the images; do
+not commit credentials or session state.

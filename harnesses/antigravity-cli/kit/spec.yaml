@@ -1,12 +1,30 @@
 schemaVersion: "2"
-kind: mixin
+kind: sandbox
 name: agy-sbx
 version: "1.0.0"
 displayName: Antigravity SBX
 description: Development defaults for Antigravity CLI in Docker Sandboxes
 
-requires:
-  agent: shell
+args:
+  harness_root:
+    required: true
+  skills_root:
+    required: true
+
+environment:
+  variables:
+    HARNESS_ROOT: ${{ kit.args.harness_root }}
+    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
+
+setup:
+  install:
+    - command: 'bash "$HARNESS_ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"'
+      user: "1000"
+      description: Configure integrations and shared skills
+
+sandbox:
+  image: agy-sbx:local
+  entrypoint: [agy]
 
 permissions:
   network:
@@ -37,6 +55,7 @@ permissions:
       - antigravity.google.com
 
 agentInstructions:
+  filename: GEMINI.md
   content: |
     This Antigravity sandbox directly mounts the host Git repository read/write.
 

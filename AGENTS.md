@@ -14,11 +14,12 @@ files under `harnesses/<name>/`:
 1. `Dockerfile` builds `claude-sbx:local`, `codex-sbx:local`,
    `opencode-sbx:local`, `agy-sbx:local`, or `junie-sbx:local`. It contains the toolchain
    only; no agent configuration or credentials.
-2. `kit/spec.yaml` defines the network-egress allowlist and agent instructions.
+2. `kit/spec.yaml` is a full sandbox kit defining the agent, network-egress
+   allowlist, instructions and synchronous `setup.install` bootstrap.
    The kit is applied only when a sandbox is created.
-3. `bin/` launches or reuses the harness sandbox.
+3. `bin/` launches or reuses the harness sandbox through `sbx create` and `sbx run --name`.
 4. `scripts/bootstrap.sh` installs or registers agent-specific integrations
-   after creation; `scripts/verify.sh` verifies the resulting sandbox.
+   during creation; `scripts/verify.sh` verifies the resulting sandbox.
 
 Root commands in `bin/` are thin delegates:
 
@@ -31,18 +32,22 @@ Root commands in `bin/` are thin delegates:
 Do not bake Claude plugins, Codex/OpenCode/Antigravity/Junie MCP configuration,
 credentials, or session state into any image. Docker Sandboxes recreates
 agent-managed configuration when a sandbox is created. Claude plugins belong
-in the Claude bootstrap; Codex, OpenCode, and Antigravity MCP registration,
-Superpowers, Caveman, and Playwright skills belong in their respective
-bootstraps.
+in the Claude bootstrap; agent MCP registration belongs in each bootstrap.
+Superpowers, pinned Caveman and Playwright skills live in the host's native
+sbx skills store, managed by `bin/sbx-skills` and `shared/skills.sh`. Bootstraps
+link their discovery directories to the explicitly mounted shared store.
 
 Mount model: the target repository is mounted read/write at the same absolute
 path inside its sandbox. When it differs from this repository, this harness
 repository is mounted read-only so bootstrap and verification scripts remain
-available.
+available. The shared skills store is also mounted read/write at its original
+absolute path, intentionally sharing skill changes across all five agents.
 
 ## Commands
 
 - `make test` — runs all host-side Bash tests in `tests/`.
+- `bin/sbx-skills [--update]` — ensure/list shared skills; optionally refresh
+  Superpowers and Playwright while keeping Caveman pinned.
 - `bash tests/test_name.sh` — runs one test. Tests may source root wrapper
   functions without launching a sandbox.
 - `make rebuild` or `make rebuild-claude` — rebuilds and loads
@@ -82,10 +87,12 @@ available.
   apply a sandbox-scoped allow rule as described above.
 - OpenJDK 25, Maven, and Gradle are present in all templates and verified by
   all verification scripts.
-- All bootstrap scripts must remain idempotent because they are rerun for
-  existing sandboxes. Caveman is a Claude plugin and a pinned skill in the
-  Codex, OpenCode, Antigravity, and Junie bootstraps; do not run its standalone
-  hook installer.
+- Require sbx 0.42.1+ and host jq. Launchers generate no environment files;
+  Junie API keys are session-only overrides on `sbx run`.
+- All bootstrap scripts must remain idempotent for explicit repair runs.
+  Native `setup.install` runs them at creation, not on every attachment.
+  Caveman is a Claude plugin and a pinned shared skill; do not run its
+  standalone hook installer.
 - Root wrappers, harness launchers, and bootstrap scripts use `BASH_SOURCE`
   guards so tests can source them without side effects. Preserve that behavior.
 

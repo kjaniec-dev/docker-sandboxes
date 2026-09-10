@@ -5,6 +5,12 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
+if [[ -z "${HARNESS_ROOT:-}" ]]; then
+  HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+fi
+# shellcheck source=/dev/null
+source "$HARNESS_ROOT/shared/skills.sh"
+
 if ! codex mcp get serena --json 2>/dev/null | jq -e '
   .enabled == true and
   .transport.type == "stdio" and
@@ -22,39 +28,6 @@ if ! codex mcp get context7 --json 2>/dev/null | jq -e '
   codex mcp add context7 --url https://mcp.context7.com/mcp
 fi
 
-superpowers_dir="$HOME/.codex/superpowers"
-if [[ -d "$superpowers_dir/.git" ]]; then
-  git -C "$superpowers_dir" pull --ff-only
-elif [[ ! -e "$superpowers_dir" ]]; then
-  git clone --depth=1 https://github.com/obra/superpowers.git "$superpowers_dir"
-else
-  echo "Codex bootstrap: refusing to replace non-git $superpowers_dir" >&2
-  exit 1
-fi
-mkdir -p "$HOME/.agents/skills"
-ln -sfn "$superpowers_dir/skills" "$HOME/.agents/skills/superpowers"
-
-CAVEMAN_TAG="v2.2.0"
-CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"
-caveman_dir="$HOME/.codex/caveman"
-if [[ -d "$caveman_dir/.git" ]]; then
-  :
-elif [[ ! -e "$caveman_dir" ]]; then
-  git clone --depth=1 --branch "$CAVEMAN_TAG" \
-    https://github.com/JuliusBrussee/caveman.git "$caveman_dir"
-else
-  echo "Codex bootstrap: refusing to replace non-git $caveman_dir" >&2
-  exit 1
-fi
-if [[ "$(git -C "$caveman_dir" rev-parse HEAD)" != "$CAVEMAN_REVISION" ]]; then
-  echo "Codex bootstrap: unexpected Caveman revision in $caveman_dir" >&2
-  exit 1
-fi
-ln -sfn "$caveman_dir/skills/caveman" "$HOME/.agents/skills/caveman"
-
-playwright-cli install --skills agents --global
-
-mkdir -p "$HOME/.cache/claude-sbx"
-touch "$HOME/.cache/claude-sbx/codex-bootstrap-v1"
+link_shared_skills "$HOME/.agents/skills"
 
 echo "Codex bootstrap setup complete."

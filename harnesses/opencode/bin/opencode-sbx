@@ -13,20 +13,10 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 TEMPLATE="opencode-sbx:local"
 KIT="$ROOT/harnesses/opencode/kit"
-BOOTSTRAP="$ROOT/harnesses/opencode/scripts/bootstrap.sh"
-VERIFY="$ROOT/harnesses/opencode/scripts/verify.sh"
-BOOTSTRAP_MARKER="/home/agent/.cache/claude-sbx/opencode-bootstrap-v1"
 
 SANDBOX_PREFIX="opencode"
-SANDBOX_AGENT="opencode"
 # shellcheck source=shared/launcher.sh
 source "$ROOT/shared/launcher.sh"
-
-run_agent() {
-  local name="$1"
-  shift
-  exec sbx run --name "$name" -- "$@"
-}
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   main "$@"
