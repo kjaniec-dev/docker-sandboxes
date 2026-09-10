@@ -26,11 +26,13 @@ grep -Fq 'opencode-sbx verification passed' "$VERIFY"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/bin" "$tmp/home/.agents/skills/superpowers" \
-  "$tmp/home/.agents/skills/caveman" "$tmp/home/.agents/skills/playwright-cli"
-touch "$tmp/home/.agents/skills/superpowers/README.md" \
-  "$tmp/home/.agents/skills/caveman/SKILL.md" \
-  "$tmp/home/.agents/skills/playwright-cli/SKILL.md"
+mkdir -p "$tmp/bin" "$tmp/shared-skills"
+for skill in using-superpowers brainstorming caveman playwright-cli; do
+  mkdir -p "$tmp/shared-skills/$skill"
+  touch "$tmp/shared-skills/$skill/SKILL.md"
+done
+mkdir -p "$tmp/home/.config/opencode"
+ln -s "$tmp/shared-skills" "$tmp/home/.config/opencode/skills"
 
 cat >"$tmp/mock-command" <<'MOCK'
 #!/usr/bin/env bash
@@ -113,13 +115,13 @@ fi
 grep -Fq 'unexpected OpenCode MCP configuration' "$tmp/mcp-failure.err"
 
 mock_config='{"enabled_providers":["opencode-go"],"mcp":{"serena":{"type":"local"},"context7":{"type":"remote","url":"https://mcp.context7.com/mcp"}}}'
-rm "$tmp/home/.agents/skills/playwright-cli/SKILL.md"
+rm "$tmp/shared-skills/playwright-cli/SKILL.md"
 if run_verify "$tmp/skill-failure"; then
   echo 'missing Playwright skill was not detected' >&2
   exit 1
 fi
 grep -Fq 'missing OpenCode skill: playwright-cli' "$tmp/skill-failure.err"
-touch "$tmp/home/.agents/skills/playwright-cli/SKILL.md"
+touch "$tmp/shared-skills/playwright-cli/SKILL.md"
 
 for failing_command in mvn gradle docker; do
   mock_fail_command="$failing_command"

@@ -1,12 +1,28 @@
 schemaVersion: "2"
-kind: mixin
+kind: sandbox
 name: codex-sbx
 version: "1.0.0"
 displayName: Codex SBX
 description: Development defaults for Codex in Docker Sandboxes
 
-requires:
-  agent: codex
+extends: codex
+
+args:
+  harness_root:
+    required: true
+  skills_root:
+    required: true
+
+environment:
+  variables:
+    HARNESS_ROOT: ${{ kit.args.harness_root }}
+    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
+
+setup:
+  install:
+    - command: 'bash "$HARNESS_ROOT/harnesses/codex/scripts/bootstrap.sh"'
+      user: "1000"
+      description: Configure integrations and shared skills
 
 permissions:
   network:
@@ -33,6 +49,7 @@ permissions:
       - platform.openai.com
 
 agentInstructions:
+  filename: AGENTS.md
   content: |
     This sandbox directly mounts the host Git repository read/write.
 

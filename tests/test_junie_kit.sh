@@ -5,7 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KIT="$ROOT/harnesses/junie/kit/spec.yaml"
 
 grep -Fq 'name: junie-sbx' "$KIT"
-grep -Fq 'agent: shell' "$KIT"
+grep -Fq 'kind: sandbox' "$KIT"
+grep -Fq 'image: junie-sbx:local' "$KIT"
 for domain in github.com api.github.com raw.githubusercontent.com objects.githubusercontent.com \
   codeload.github.com registry.npmjs.org nodejs.org go.dev proxy.golang.org sum.golang.org \
   pypi.org files.pythonhosted.org astral.sh mcp.context7.com cdn.playwright.dev \

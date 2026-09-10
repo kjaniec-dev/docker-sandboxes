@@ -60,92 +60,51 @@ mkdir -p "$tmp/bin"
 cat >"$tmp/bin/git" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$*" >>"$MOCK_GIT_LOG"
-if [[ "${1:-}" == "-C" && "${3:-}" == "rev-parse" ]]; then
-  printf '%s\n' "$MOCK_CAVEMAN_REVISION"
-  exit 0
-fi
-if [[ "${1:-}" == "clone" ]]; then
-  target="${@: -1}"
-  mkdir -p "$target/.git" "$target/skills/brainstorming" "$target/skills/debugging" "$target/skills/caveman"
-  touch "$target/skills/brainstorming/SKILL.md" "$target/skills/debugging/SKILL.md" "$target/skills/caveman/SKILL.md"
-  exit 0
-fi
-if [[ "${1:-}" == "-C" && "${3:-}" == "pull" ]]; then
-  if [[ "$2" == */caveman ]]; then
-    exit 1
-  fi
-  exit 0
-fi
+printf '%s\n' "$*" >>"$MOCK_FORBIDDEN_LOG"
 exit 1
 MOCK
 chmod +x "$tmp/bin/git"
 cat >"$tmp/bin/playwright-cli" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$*" >>"$MOCK_PLAYWRIGHT_LOG"
-if [[ "${1:-}" == "install" ]]; then
-  mkdir -p "$HOME/.agents/skills/playwright-cli"
-  touch "$HOME/.agents/skills/playwright-cli/SKILL.md"
-fi
+printf '%s\n' "$*" >>"$MOCK_FORBIDDEN_LOG"
+exit 1
 MOCK
 chmod +x "$tmp/bin/playwright-cli"
 
-export MOCK_GIT_LOG="$tmp/git.log"
-export MOCK_CAVEMAN_REVISION="9aa63945a349bef17206540650db48c30fafbdf2"
-export MOCK_PLAYWRIGHT_LOG="$tmp/playwright.log"
+export MOCK_FORBIDDEN_LOG="$tmp/forbidden.log"
 PATH="$tmp/bin:$PATH"
 
-existing="$tmp/existing"
-mkdir -p "$existing/.git"
-ensure_git_checkout "$existing" https://example.test/repo.git
-grep -Fq -- "-C $existing pull --ff-only" "$MOCK_GIT_LOG"
-
-superpowers="$tmp/superpowers"
-ensure_git_checkout "$superpowers" https://github.com/obra/superpowers.git
-grep -Fq -- "clone --depth=1 https://github.com/obra/superpowers.git $superpowers" "$MOCK_GIT_LOG"
-
-caveman="$tmp/caveman"
-ensure_git_checkout "$caveman" https://github.com/JuliusBrussee/caveman.git v2.2.0
-grep -Fq -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $caveman" "$MOCK_GIT_LOG"
-ensure_git_checkout "$caveman" https://github.com/JuliusBrussee/caveman.git v2.2.0
-[[ "$(grep -Fc -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $caveman" "$MOCK_GIT_LOG")" == 1 ]]
-
-non_git="$tmp/non-git"
-mkdir -p "$non_git"
-if ensure_git_checkout "$non_git" https://example.test/repo.git; then
-  echo "non-git checkout path unexpectedly accepted" >&2
-  exit 1
-fi
+shared_skills="$tmp/shared-skills"
+for skill in using-superpowers brainstorming caveman playwright-cli; do
+  mkdir -p "$shared_skills/$skill"
+  printf '%s\n' "$skill" >"$shared_skills/$skill/SKILL.md"
+done
 
 bootstrap_home="$tmp/bootstrap-home"
 mkdir -p "$bootstrap_home"
 bootstrap_output="$tmp/bootstrap-output.log"
-HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" bash "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" >"$bootstrap_output"
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" SHARED_SKILLS_ROOT="$shared_skills" \
+  bash "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" >"$bootstrap_output"
 
 grep -Fxq 'Antigravity bootstrap setup complete.' "$bootstrap_output"
-[[ -d "$bootstrap_home/.gemini/superpowers/.git" ]]
-[[ -d "$bootstrap_home/.gemini/caveman/.git" ]]
-[[ -L "$bootstrap_home/.gemini/config/skills/brainstorming" ]]
-[[ "$(readlink "$bootstrap_home/.gemini/config/skills/brainstorming")" == "$bootstrap_home/.gemini/superpowers/skills/brainstorming" ]]
-[[ -L "$bootstrap_home/.gemini/config/skills/debugging" ]]
-[[ -L "$bootstrap_home/.gemini/config/skills/caveman" ]]
-[[ "$(readlink "$bootstrap_home/.gemini/config/skills/caveman")" == "$bootstrap_home/.gemini/caveman/skills/caveman" ]]
-grep -Fq -- 'install --skills agents --global' "$MOCK_PLAYWRIGHT_LOG"
-[[ -L "$bootstrap_home/.gemini/config/skills/playwright-cli" ]]
-[[ "$(readlink "$bootstrap_home/.gemini/config/skills/playwright-cli")" == "$bootstrap_home/.agents/skills/playwright-cli" ]]
+skills_link="$bootstrap_home/.gemini/config/skills"
+[[ -L "$skills_link" ]]
+[[ "$(readlink "$skills_link")" == "$shared_skills" ]]
+for skill in using-superpowers brainstorming caveman playwright-cli; do
+  [[ -f "$skills_link/$skill/SKILL.md" ]]
+done
 jq -e '
   .mcpServers.serena.command == "serena" and
   .mcpServers.context7.serverUrl == "https://mcp.context7.com/mcp"
 ' "$bootstrap_home/.gemini/config/mcp_config.json" >/dev/null
-[[ -f "$bootstrap_home/.cache/claude-sbx/antigravity-bootstrap-v1" ]]
+[[ ! -e "$bootstrap_home/.cache/claude-sbx/antigravity-bootstrap-v1" ]]
+[[ ! -s "$MOCK_FORBIDDEN_LOG" ]]
 
-HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" bash "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" >>"$bootstrap_output"
-[[ "$(grep -Fc -- "clone --depth=1 https://github.com/obra/superpowers.git $bootstrap_home/.gemini/superpowers" "$MOCK_GIT_LOG")" == 1 ]]
-[[ "$(grep -Fc -- "clone --depth=1 --branch v2.2.0 https://github.com/JuliusBrussee/caveman.git $bootstrap_home/.gemini/caveman" "$MOCK_GIT_LOG")" == 1 ]]
-if grep -Fq -- "-C $bootstrap_home/.gemini/caveman pull --ff-only" "$MOCK_GIT_LOG"; then
-  echo "Antigravity bootstrap pulled pinned Caveman checkout" >&2
-  exit 1
-fi
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" SHARED_SKILLS_ROOT="$shared_skills" \
+  bash "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh" >>"$bootstrap_output"
+[[ -L "$skills_link" ]]
+[[ "$(readlink "$skills_link")" == "$shared_skills" ]]
+[[ ! -s "$MOCK_FORBIDDEN_LOG" ]]
 
 echo "test_agy_bootstrap.sh: PASS"

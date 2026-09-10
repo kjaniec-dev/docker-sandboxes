@@ -3,9 +3,9 @@
 ## Requirements
 
 - macOS
-- Docker Sandboxes (`sbx`), recommended version 0.42.1 or newer
+- Docker Sandboxes (`sbx`), minimum version 0.42.1
 - Docker Desktop / Docker Engine for building the custom images
-- Git
+- Git and jq on the host (`brew install jq`)
 
 Install Docker Sandboxes, check its platform requirements, and sign in by
 following Docker's official [installation guide](https://docs.docker.com/ai/sandboxes/install/).
@@ -31,17 +31,62 @@ The five harnesses share their launcher lifecycle and image rebuild code in
 authentication, bootstrap scripts, and kits remain under each harness.
 Launcher-only updates apply to existing sandboxes on the next invocation.
 
-Our kits are `kind: mixin`, so `--kit` remains the supported syntax. The new
-positional kit syntax is for `kind: sandbox` kits. `sandbox.build` and kit
-`mixins:` composition are accepted by the schema but not implemented by the
-runtime, so custom images still need the rebuild commands below.
+Kits are now `kind: sandbox`. Claude, Codex and OpenCode inherit their native
+agent defaults; Antigravity and Junie declare their own entrypoints. The shared
+launcher checks `sbx ls --json` and invokes `sbx create` only for a missing
+instance, with the kit, template and workspace
+mounts directly, then `sbx run --name` to forward agent arguments. There are no
+generated environment files or argument interpolation. Agent bootstrap runs
+synchronously as user 1000 via the kit's `setup.install`, before attachment.
+Junie API keys are supplied only to the second, session attachment command.
 
-`sbxenv.yaml` is useful for project-specific environments but isn't a drop-in
-replacement for these launchers: its lifecycle commands run on the host, and
-its environment file needs a suitable location relative to workspace mounts.
-Migrating requires a host smoke test for bootstrap ordering and agent arguments.
-We retain per-sandbox skills because the native shared skill store changes
-their ownership and sharing across sandboxes.
+On first creation, sbx asks which credentials the custom v2 kit may use.
+For Codex with an existing ChatGPT login, skip the API-key option and approve
+OpenAI OAuth. A stored login alone is insufficient: the kit also needs this
+binding. Non-interactive creation cannot ask and may start without usable
+credentials. See [Docker credential bindings](https://docs.docker.com/ai/sandboxes/configuration/credentials/).
+
+The build context includes only the two shared toolchain installers. Installers
+clean Go, uv and npm build/download caches in the same image layer, retaining
+installed tools and Playwright browsers. Rebuild templates to apply this size
+reduction; existing images and sandboxes are unaffected.
+
+`sandbox.build` and author-time `mixins:` composition are not implemented by
+the 0.42.1 runtime, so custom images still use the rebuild commands below.
+
+Recreate old sandboxes once for this migration: inspect names with `sbx ls`,
+remove a selected old instance with `sbx rm <sandbox-name>`, then run its
+launcher again. This loses sandbox sessions/configuration but leaves mounted
+repository files intact. No image rebuild is needed just for this migration.
+Environment/kit changes are creation-time settings, not patches to an existing
+instance. There are no bootstrap markers or automatic bootstrap retries on
+reattach; after a failed first bootstrap, correct the cause and recreate, or
+run the idempotent bootstrap explicitly with `sbx exec`.
+
+## Shared skills
+
+The first launcher run installs Superpowers and Playwright CLI through
+`sbx skills add`. Caveman v2.2.0 is checked against commit
+`9aa63945a349bef17206540650db48c30fafbdf2` and copied into the same store, because
+native `skills add` cannot pin Git revisions in 0.42.1. Source checkouts and
+backups stay in the host cache, outside the skills store.
+
+```bash
+./bin/sbx-skills          # ensure the required skills exist; list the store
+./bin/sbx-skills --update # refresh Superpowers/Playwright; keep Caveman pinned
+sbx skills ls --json     # includes the native store's actual host path
+```
+
+All five kits explicitly mount that store read/write and link their discovery
+directory to it: Claude `~/.claude/skills`, Codex `~/.agents/skills`, OpenCode
+`~/.config/opencode/skills`, Antigravity `~/.gemini/config/skills`, and Junie
+`~/.junie/skills`. Native automatic skill mounting is disabled to avoid duplicate
+mounts and to give custom agents the same layout. A skill change affects every
+sandbox; reload/restart the agent if it caches skills. Claude plugins remain
+installed separately because they provide hooks and integrations beyond skills.
+Use `sbx-skills --update`, not a blanket native update, to retain the Caveman pin.
+
+### Other 0.42.1 behavior
 
 Published ports now default to IPv4. Use `--publish 3000:3000/tcp` explicitly
 for IPv4 and IPv6. New sandbox Docker volumes default to 10 GB; set
@@ -234,9 +279,8 @@ junie-sbx
 unset JUNIE_API_KEY
 ```
 
-Junie bootstrap registers Serena and Context7 in `~/.junie/mcp/mcp.json`,
-installs Superpowers and the pinned Caveman skill in `~/.junie/skills/`, and
-installs the Playwright CLI skills globally. Do not put Junie credentials,
+Junie bootstrap registers Serena and Context7 in `~/.junie/mcp/mcp.json`
+and links the shared skill store at `~/.junie/skills/`. Do not put Junie credentials,
 MCP configuration, or session state in the image or repository.
 
 ## Start a harness
@@ -394,16 +438,11 @@ sbx exec "$name" bash /path/to/claude-sbx/harnesses/junie/scripts/verify.sh
 
 Each verification checks its agent CLI plus the shared toolchain, pinned
 Node/Go versions, Serena, Playwright CLI, OpenJDK 25, Maven, Gradle, and Docker
-Compose. Codex bootstrap idempotently registers Serena and Context7 as MCP
-servers, installs Superpowers and the pinned Caveman skill into
-`~/.agents/skills/`, and installs the Playwright CLI skills for Codex. The
-Antigravity bootstrap idempotently registers Serena and Context7 and links
-Superpowers, Caveman, and Playwright skills into Antigravity's global skill
-directory. The Codex kit instructs the agent to use `playwright-cli` for
-directory. The Junie bootstrap registers Serena and Context7 in
-`~/.junie/mcp/mcp.json` and links Superpowers, Caveman, and Playwright skills
-into `~/.junie/skills/`. The Codex kit instructs the agent to use
-`playwright-cli` for browser and frontend validation.
+Compose. Bootstraps preserve Serena/Context7 MCP registration and link each
+agent's discovery directory to the shared skills store. Verification checks
+that the actual shared SKILL.md files are readable, not the old per-agent Git
+checkout layout. Kits instruct agents to use `playwright-cli` for browser and
+frontend validation.
 
 ## Ports
 

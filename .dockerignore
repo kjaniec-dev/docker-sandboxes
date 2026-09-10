@@ -1,0 +1,5 @@
+# Images only consume the shared toolchain installers.
+**
+!shared/
+!shared/install-system-toolchain.sh
+!shared/install-user-toolchain.sh

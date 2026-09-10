@@ -15,6 +15,7 @@ cat >"$tmp/bin/sbx" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'sbx %s\n' "$*" >>"$MOCK_LOG"
+if [[ "$*" == 'template ls --json' ]]; then printf '{"images":[]}\n'; fi
 MOCK
 chmod +x "$tmp/bin/docker" "$tmp/bin/sbx"
 

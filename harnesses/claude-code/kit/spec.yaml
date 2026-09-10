@@ -1,12 +1,28 @@
 schemaVersion: "2"
-kind: mixin
+kind: sandbox
 name: claude-sbx-private
 version: "1.0.0"
 displayName: Claude SBX Private
 description: Private development defaults for Claude Code in Docker Sandboxes
 
-requires:
-  agent: claude
+extends: claude
+
+args:
+  harness_root:
+    required: true
+  skills_root:
+    required: true
+
+environment:
+  variables:
+    HARNESS_ROOT: ${{ kit.args.harness_root }}
+    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
+
+setup:
+  install:
+    - command: 'bash "$HARNESS_ROOT/harnesses/claude-code/scripts/bootstrap.sh"'
+      user: "1000"
+      description: Configure integrations and shared skills
 
 permissions:
   network:
@@ -29,6 +45,7 @@ permissions:
       - playwright.download.prss.microsoft.com
 
 agentInstructions:
+  filename: CLAUDE.md
   content: |
     This sandbox directly mounts the host Git repository read/write.
 

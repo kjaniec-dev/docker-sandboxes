@@ -13,30 +13,10 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 TEMPLATE="junie-sbx:local"
 KIT="$ROOT/harnesses/junie/kit"
-BOOTSTRAP="$ROOT/harnesses/junie/scripts/bootstrap.sh"
-VERIFY="$ROOT/harnesses/junie/scripts/verify.sh"
-RUN="$ROOT/harnesses/junie/scripts/run.sh"
-BOOTSTRAP_MARKER="/home/agent/.cache/claude-sbx/junie-bootstrap-v1"
 
 SANDBOX_PREFIX="junie"
-SANDBOX_AGENT="shell"
 # shellcheck source=shared/launcher.sh
 source "$ROOT/shared/launcher.sh"
-
-run_agent() {
-  local name="$1"
-  shift
-
-  if [[ -n "${JUNIE_API_KEY:-}" ]]; then
-    sbx exec -it "$name" \
-      env "JUNIE_API_KEY=$JUNIE_API_KEY" \
-      bash "$RUN" \
-      "$@"
-    return
-  fi
-
-  sbx exec -it "$name" bash "$RUN" "$@"
-}
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   main "$@"

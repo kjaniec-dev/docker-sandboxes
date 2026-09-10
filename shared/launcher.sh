@@ -22,46 +22,11 @@ ensure_worktrees_ignored() {
   git -C "$repo_root" check-ignore -q "$probe"
 }
 
-sandbox_exists() {
-  # Consume the entire listing to avoid SIGPIPE with pipefail on large lists.
-  sbx ls -q | grep -Fx "$1" >/dev/null
-}
-
 template_exists() {
   local repository="${TEMPLATE%:*}"
   local tag="${TEMPLATE##*:}"
-  local listing
-
-  # Docker Sandboxes 0.42.0+ provides a stable JSON shape. Keep a text-table
-  # fallback for older CLIs and lightweight test stubs.
-  if listing="$(sbx template ls --json 2>/dev/null)" && [[ -n "$listing" ]] &&
-    jq -e --arg repository "$repository" --arg tag "$tag" \
-      'any(.images[]?; ((.repository | split("/") | last) == $repository and .tag == $tag))' \
-      <<<"$listing" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  sbx template ls | awk -v repository="$repository" -v tag="$tag" '
-    { n = split($1, parts, "/") }
-    parts[n] == repository && $2 == tag { found = 1 }
-    END { exit !found }
-  '
-}
-
-workspace_mounts() {
-  local repo_root="$1"
-  printf '%s\n' "$repo_root"
-  if [[ "$repo_root" != "$ROOT" ]]; then
-    printf '%s\n' "$ROOT:ro"
-  fi
-}
-
-bootstrap_sandbox() {
-  sbx exec "$1" bash "$BOOTSTRAP"
-}
-
-verify_sandbox() {
-  sbx exec "$1" bash "$VERIFY"
+  sbx template ls --json | jq -e --arg repository "$repository" --arg tag "$tag" \
+    'any(.images[]; ((.repository | split("/") | last) == $repository and .tag == $tag))' >/dev/null
 }
 
 main() {
@@ -70,8 +35,13 @@ main() {
     return 1
   }
 
-  local repo_root name workspace
-  local -a workspaces
+  command -v jq >/dev/null 2>&1 || {
+    echo "$SANDBOX_PREFIX-sbx: install jq on the host (brew install jq)." >&2
+    return 1
+  }
+
+  local repo_root name store sandboxes
+  local -a run_args mounts
   if ! repo_root="$(repo_root_from_cwd 2>/dev/null)"; then
     echo "$SANDBOX_PREFIX-sbx: run this command from inside a Git repository" >&2
     return 2
@@ -90,18 +60,28 @@ main() {
   fi
 
   name="$(sandbox_name_for_repo "$repo_root")"
-  workspaces=()
-  while IFS= read -r workspace; do
-    workspaces+=("$workspace")
-  done < <(workspace_mounts "$repo_root")
-
-  if ! sandbox_exists "$name"; then
-    sbx create --name "$name" --template "$TEMPLATE" --kit "$KIT" \
-      "$SANDBOX_AGENT" "${workspaces[@]}"
-    bootstrap_sandbox "$name"
-  elif [[ -n "$BOOTSTRAP_MARKER" ]] && ! sbx exec "$name" test -f "$BOOTSTRAP_MARKER"; then
-    bootstrap_sandbox "$name"
+  run_args=(run --name "$name")
+  # shellcheck source=shared/skills.sh
+  source "$ROOT/shared/skills.sh"
+  store="$(shared_skills_store)" || return
+  ensure_shared_skills "$store" || return
+  mounts=("$repo_root")
+  [[ "$repo_root" == "$ROOT" ]] || mounts+=("$ROOT:ro")
+  mounts+=("$store")
+  # Reattachment must not pass workspaces again (sbx rejects them on reuse).
+  sandboxes="$(sbx ls --json)" || return
+  if ! jq -e --arg name "$name" 'any(.sandboxes[]; .name == $name)' <<<"$sandboxes" >/dev/null; then
+    # Native create permits credential-binding prompts on the first launch.
+    # Keep creation separate so Junie credentials remain session-only.
+    sbx create --name "$name" --template "$TEMPLATE" \
+      --kit-arg "harness_root=$ROOT" --kit-arg "skills_root=$store" \
+      "$KIT" "${mounts[@]}" || return
   fi
 
-  run_agent "$name" "$@"
+  # Session-only, including an empty override to prevent a stale key from
+  # taking precedence over JetBrains Account OAuth. Never persist it in YAML.
+  if [[ "$SANDBOX_PREFIX" == junie ]]; then
+    run_args+=(--env "JUNIE_API_KEY=${JUNIE_API_KEY:-}")
+  fi
+  sbx "${run_args[@]}" -- "$@"
 }
