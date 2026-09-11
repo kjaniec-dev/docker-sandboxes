@@ -44,4 +44,12 @@ jq -e '
   exit 1
 }
 
+jq -e '
+  .toolPermission == "always-proceed" and
+  .artifactReviewPolicy == "always-proceed"
+' "$HOME/.gemini/antigravity-cli/settings.json" >/dev/null || {
+  echo "unexpected Antigravity permission configuration" >&2
+  exit 1
+}
+
 echo "agy-sbx verification passed"

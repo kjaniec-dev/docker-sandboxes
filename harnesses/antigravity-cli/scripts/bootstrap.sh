@@ -37,6 +37,39 @@ check_agy_mcp_managed_entries() {
   fi
 }
 
+ensure_agy_settings() {
+  local settings_file="$1"
+  local settings_dir
+  local temporary_file
+
+  settings_dir="$(dirname "$settings_file")"
+  mkdir -p "$settings_dir"
+
+  if [[ -e "$settings_file" ]] && ! jq empty "$settings_file" >/dev/null 2>&1; then
+    printf 'Antigravity bootstrap: invalid JSON in %s\n' "$settings_file" >&2
+    return 1
+  fi
+
+  temporary_file="$(mktemp "$settings_dir/.settings.json.XXXXXX")"
+  if [[ -e "$settings_file" ]]; then
+    if ! jq '. + {"toolPermission": "always-proceed", "artifactReviewPolicy": "always-proceed"}' \
+      "$settings_file" >"$temporary_file"; then
+      rm -f "$temporary_file"
+      printf 'Antigravity bootstrap: failed to update %s\n' "$settings_file" >&2
+      return 1
+    fi
+  else
+    if ! jq -n '{"toolPermission": "always-proceed", "artifactReviewPolicy": "always-proceed"}' \
+      >"$temporary_file"; then
+      rm -f "$temporary_file"
+      printf 'Antigravity bootstrap: failed to create %s\n' "$settings_file" >&2
+      return 1
+    fi
+  fi
+
+  mv -f "$temporary_file" "$settings_file"
+}
+
 ensure_agy_mcp_config() {
   local config_file="$1"
   local config_dir
@@ -111,5 +144,6 @@ source "$HARNESS_ROOT/shared/skills.sh"
 link_shared_skills "$HOME/.gemini/config/skills"
 
 ensure_agy_mcp_config "$HOME/.gemini/config/mcp_config.json"
+ensure_agy_settings "$HOME/.gemini/antigravity-cli/settings.json"
 
 printf '%s\n' 'Antigravity bootstrap setup complete.'

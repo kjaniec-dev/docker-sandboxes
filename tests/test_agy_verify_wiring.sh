@@ -20,6 +20,8 @@ grep -Fq 'docker compose version' "$COMMON"
 grep -Fq 'agy --version' "$VERIFY"
 grep -Fq '1.1.27' "$VERIFY"
 grep -Fq 'mcp_config.json' "$VERIFY"
+grep -Fq 'settings.json' "$VERIFY"
+grep -Fq 'always-proceed' "$VERIFY"
 grep -Fq 'serena' "$VERIFY"
 grep -Fq 'superpowers' "$VERIFY"
 grep -Fq 'caveman' "$VERIFY"
@@ -37,6 +39,9 @@ mkdir -p "$tmp/home/.gemini/config"
 ln -s "$tmp/shared-skills" "$tmp/home/.gemini/config/skills"
 printf '%s\n' '{"mcpServers":{"serena":{"command":"serena","args":["start-mcp-server","--context=ide-assistant","--project-from-cwd"],"disabled":false},"context7":{"serverUrl":"https://mcp.context7.com/mcp","disabled":false}}}' \
   >"$tmp/home/.gemini/config/mcp_config.json"
+mkdir -p "$tmp/home/.gemini/antigravity-cli"
+printf '%s\n' '{"toolPermission":"always-proceed","artifactReviewPolicy":"always-proceed"}' \
+  >"$tmp/home/.gemini/antigravity-cli/settings.json"
 
 cat >"$tmp/mock-command" <<'MOCK'
 #!/usr/bin/env bash

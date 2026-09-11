@@ -24,6 +24,27 @@ jq -e '
 ensure_agy_mcp_config "$config"
 jq -e '.mcpServers | keys | sort == ["context7", "custom", "serena"]' "$config" >/dev/null
 
+settings="$config_dir/settings.json"
+printf '%s\n' '{"colorScheme":"tokyo night"}' >"$settings"
+ensure_agy_settings "$settings"
+jq -e '
+  .colorScheme == "tokyo night" and
+  .toolPermission == "always-proceed" and
+  .artifactReviewPolicy == "always-proceed"
+' "$settings" >/dev/null
+
+ensure_agy_settings "$settings"
+jq -e 'keys | sort == ["artifactReviewPolicy", "colorScheme", "toolPermission"]' "$settings" >/dev/null
+
+invalid_settings="$config_dir/invalid-settings.json"
+printf '%s\n' '{invalid json' >"$invalid_settings"
+invalid_settings_before="$(cksum <"$invalid_settings")"
+if ensure_agy_settings "$invalid_settings"; then
+  echo "invalid Antigravity settings unexpectedly accepted" >&2
+  exit 1
+fi
+[[ "$(cksum <"$invalid_settings")" == "$invalid_settings_before" ]]
+
 conflict_dir="$tmp/conflict"
 mkdir -p "$conflict_dir"
 conflict="$conflict_dir/mcp_config.json"
@@ -98,6 +119,10 @@ jq -e '
   .mcpServers.serena.command == "serena" and
   .mcpServers.context7.serverUrl == "https://mcp.context7.com/mcp"
 ' "$bootstrap_home/.gemini/config/mcp_config.json" >/dev/null
+jq -e '
+  .toolPermission == "always-proceed" and
+  .artifactReviewPolicy == "always-proceed"
+' "$bootstrap_home/.gemini/antigravity-cli/settings.json" >/dev/null
 [[ ! -e "$bootstrap_home/.cache/claude-sbx/antigravity-bootstrap-v1" ]]
 [[ ! -s "$MOCK_FORBIDDEN_LOG" ]]
 
