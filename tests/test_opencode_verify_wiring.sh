@@ -4,17 +4,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERIFY="$ROOT/harnesses/opencode/scripts/verify.sh"
 
+COMMON="$ROOT/shared/verify-toolchain.sh"
+
 for cmd in opencode git gh curl wget ssh rg fd jq yq fzf make just shellcheck shfmt docker node npm corepack pnpm python3 uv serena go gopls goimports golangci-lint staticcheck govulncheck dlv playwright-cli psql sqlite3 redis-cli java javac mvn gradle; do
-  grep -Fq "$cmd" "$VERIFY"
+  grep -Fq "$cmd" "$VERIFY" "$COMMON"
 done
-grep -Fq 'java --version' "$VERIFY"
-grep -Fq 'javac --version' "$VERIFY"
-grep -Fq '25.' "$VERIFY"
-grep -Fq 'v24.19.0' "$VERIFY"
-grep -Fq 'go1.26.6' "$VERIFY"
-grep -Fq 'mvn --version' "$VERIFY"
-grep -Fq 'gradle --version' "$VERIFY"
-grep -Fq 'docker compose version' "$VERIFY"
+grep -Fq 'java --version' "$COMMON"
+grep -Fq 'javac --version' "$COMMON"
+grep -Fq '"25"' "$COMMON"
+grep -Fq 'v24.19.0' "$COMMON"
+grep -Fq 'go1.26.6' "$COMMON"
+grep -Fq 'mvn --version' "$COMMON"
+grep -Fq 'gradle --version' "$COMMON"
+grep -Fq 'docker compose version' "$COMMON"
 grep -Fq 'opencode debug config' "$VERIFY"
 grep -Fq 'enabled_providers' "$VERIFY"
 grep -Fq 'opencode-go' "$VERIFY"
@@ -130,9 +132,9 @@ for failing_command in mvn gradle docker; do
     exit 1
   fi
   case "$failing_command" in
-    mvn) expected_error='OpenCode Maven verification failed: mvn --version' ;;
-    gradle) expected_error='OpenCode Gradle verification failed: gradle --version' ;;
-    docker) expected_error='OpenCode Docker Compose verification failed: docker compose version' ;;
+  mvn) expected_error='OpenCode Maven verification failed: mvn --version' ;;
+  gradle) expected_error='OpenCode Gradle verification failed: gradle --version' ;;
+  docker) expected_error='OpenCode Docker Compose verification failed: docker compose version' ;;
   esac
   grep -Fq "$expected_error" "$tmp/$failing_command-failure.err"
   mock_fail_command=''

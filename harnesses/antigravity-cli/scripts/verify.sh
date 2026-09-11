@@ -5,35 +5,10 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-check_java_major() {
-  local label="$1"
-  local version="$2"
-  local line
-  local major="unknown"
-  while IFS= read -r line; do
-    if [[ "$label" == 'Java' && "$line" =~ ^openjdk[[:space:]]([0-9]+)([.[:space:]]|$) ]]; then
-      major="${BASH_REMATCH[1]}"
-      break
-    fi
-    if [[ "$label" == 'javac' && "$line" =~ ^javac[[:space:]]([0-9]+)([.[:space:]]|$) ]]; then
-      major="${BASH_REMATCH[1]}"
-      break
-    fi
-  done <<<"$version"
-  # Require Java 25.
-  [[ "$major" == "25" ]] || {
-    echo "unexpected Antigravity $label version: $version (expected major 25; observed major $major)" >&2
-    exit 1
-  }
-}
+# shellcheck source=../../../shared/verify-toolchain.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../../shared/verify-toolchain.sh"
 
-required_commands=(agy git gh curl wget ssh rg fd jq yq fzf make just shellcheck shfmt docker node npm corepack pnpm python3 uv serena go gopls goimports golangci-lint staticcheck govulncheck dlv playwright-cli psql sqlite3 redis-cli java javac mvn gradle)
-for cmd in "${required_commands[@]}"; do
-  command -v "$cmd" >/dev/null 2>&1 || {
-    echo "missing Antigravity command: $cmd" >&2
-    exit 1
-  }
-done
+verify_toolchain_commands 'Antigravity ' agy serena
 
 skills_dir="$HOME/.gemini/config/skills"
 [[ -f "$skills_dir/using-superpowers/SKILL.md" ]] || {
@@ -58,30 +33,7 @@ skills_dir="$HOME/.gemini/config/skills"
   exit 1
 }
 
-java_version="$(java --version 2>&1)"
-check_java_major 'Java' "$java_version"
-javac_version="$(javac --version 2>&1)"
-check_java_major 'javac' "$javac_version"
-if ! mvn --version >/dev/null 2>&1; then
-  echo 'Antigravity Maven verification failed: mvn --version' >&2
-  exit 1
-fi
-if ! gradle --version >/dev/null 2>&1; then
-  echo 'Antigravity Gradle verification failed: gradle --version' >&2
-  exit 1
-fi
-[[ "$(node --version)" == "v24.19.0" ]] || {
-  echo "unexpected Antigravity Node version: $(node --version)" >&2
-  exit 1
-}
-grep -Fq 'go1.26.6' <<<"$(go version)" || {
-  echo "unexpected Antigravity Go version: $(go version)" >&2
-  exit 1
-}
-if ! docker compose version >/dev/null 2>&1; then
-  echo 'Antigravity Docker Compose verification failed: docker compose version' >&2
-  exit 1
-fi
+verify_toolchain 'Antigravity ' named
 
 jq -e '
   .mcpServers.serena.command == "serena" and
