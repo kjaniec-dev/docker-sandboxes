@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+
+DEFAULT_LIMIT=1000
+
+# Maps a sandbox name to its harness kit by matching the deterministic
+# name prefix against SANDBOX_PREFIX in every harness launcher.
+kit_for_sandbox() {
+  local name="$1" launcher prefix rel dir
+  for launcher in "$ROOT"/harnesses/*/bin/*-sbx; do
+    [[ -f "$launcher" ]] || continue
+    prefix="$(sed -n 's/^SANDBOX_PREFIX="\(.*\)"$/\1/p' "$launcher")"
+    [[ -n "$prefix" ]] || continue
+    if [[ "$name" == "$prefix-"* ]]; then
+      rel="${launcher#"$ROOT"/}"
+      dir="${rel%/bin/*}"
+      printf '%s\n' "$dir/kit/spec.yaml"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Extracts permissions.network.allow entries from a kit spec.
+kit_allow_domains() {
+  awk '
+    /^permissions:/ { inperm = 1; next }
+    inperm && /^  network:/ { innet = 1; next }
+    innet && /^    allow:/ { inallow = 1; next }
+    inallow {
+      if ($0 ~ /^[[:space:]]*#/) next
+      if ($0 ~ /^[[:space:]]*- /) { sub(/^[[:space:]]*- /, ""); print; next }
+      inallow = 0
+    }
+  ' "$ROOT/$1"
+}
+
+domain_in_kit() {
+  local domain="$1" kit="$2" entry
+  while IFS= read -r entry; do
+    if [[ "$domain" == "$entry" || "$domain" == *".$entry" ]]; then
+      return 0
+    fi
+  done < <(kit_allow_domains "$kit")
+  return 1
+}
+
+audit_sandbox() {
+  local sandbox="$1" limit="$2" log kit="" blocked host count
+  printf '== %s\n' "$sandbox"
+  if ! log="$(sbx policy log "$sandbox" --type network --limit "$limit" 2>&1)"; then
+    printf '   warning: sbx policy log failed for %s:\n' "$sandbox"
+    awk '{ print "     " $0 }' <<<"$log"
+    return 0
+  fi
+  if kit="$(kit_for_sandbox "$sandbox")" && [[ -f "$ROOT/$kit" ]]; then
+    printf '   kit: %s\n' "$kit"
+  else
+    kit=""
+    printf '   kit: unknown (no harness prefix matches this sandbox)\n'
+  fi
+  blocked="$(awk '
+    /^Blocked requests:/ { f = 1; next }
+    /^Allowed requests:/ { f = 0 }
+    f && NF > 1 && $1 != "SANDBOX" { print $3, $NF }
+  ' <<<"$log")"
+  if [[ -z "$blocked" ]]; then
+    printf '   no blocked requests\n'
+    return 0
+  fi
+  while read -r host count; do
+    [[ -n "$host" ]] || continue
+    if [[ -n "$kit" ]] && domain_in_kit "$host" "$kit"; then
+      printf '   %s (%s) - already in the kit allowlist; the sandbox may predate the kit update.\n' "$host" "$count"
+      printf '     Recreate it (sbx rm %s, then relaunch), or inspect local rules: sbx policy ls --wide\n' "$sandbox"
+    else
+      printf '   %s (%s) - blocked, missing from the kit\n' "$host" "$count"
+      printf '     sbx policy allow network --sandbox %s %s\n' "$sandbox" "$host"
+      if [[ -n "$kit" ]]; then
+        printf '     add the domain under permissions.network.allow in %s\n' "$kit"
+      fi
+    fi
+  done <<<"$blocked"
+}
+
+main() {
+  command -v sbx >/dev/null 2>&1 || {
+    echo "sbx-policy-audit: 'sbx' not found. Install Docker Sandboxes 0.42.1 or newer." >&2
+    return 1
+  }
+  command -v jq >/dev/null 2>&1 || {
+    echo "sbx-policy-audit: install jq on the host (brew install jq)." >&2
+    return 1
+  }
+
+  local name="" limit="$DEFAULT_LIMIT"
+  local -a names=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --limit)
+      limit="${2:?--limit requires a value}"
+      shift 2
+      ;;
+    -*)
+      echo "sbx-policy-audit: unknown option: $1" >&2
+      return 2
+      ;;
+    *)
+      if [[ -n "$name" ]]; then
+        echo "sbx-policy-audit: unexpected argument: $1" >&2
+        return 2
+      fi
+      name="$1"
+      shift
+      ;;
+    esac
+  done
+
+  if [[ -n "$name" ]]; then
+    names=("$name")
+  else
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && names+=("$line")
+    done < <(sbx ls --json | jq -r '.sandboxes[].name')
+  fi
+
+  if [[ ${#names[@]} -eq 0 ]]; then
+    echo "no sandboxes found"
+    return 0
+  fi
+
+  local sandbox first=1
+  for sandbox in "${names[@]}"; do
+    [[ $first -eq 1 ]] || printf '\n'
+    first=0
+    audit_sandbox "$sandbox" "$limit"
+  done
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

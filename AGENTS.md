@@ -48,6 +48,14 @@ absolute path, intentionally sharing skill changes across all five agents.
 - `make test` — runs all host-side Bash tests in `tests/`.
 - `bin/sbx-skills [--update]` — ensure/list shared skills; optionally refresh
   Superpowers and Playwright while keeping Caveman pinned.
+- `bin/sbx-policy-audit [<sandbox>] [--limit N]` — read-only review of
+  `sbx policy log`: reports blocked network requests per sandbox, compares
+  them with the matching harness kit allowlist, and prints scoped
+  `sbx policy allow` suggestions plus the kit file to update.
+- `bin/sbx-new-harness <name> [--prefix <p>] [--base shell|claude-code|codex|opencode]`
+  — scaffolds a new harness (Dockerfile, kit, launcher, bootstrap, verify),
+  root delegates, and a layout test without overwriting existing files, then
+  prints the remaining manual wiring steps.
 - `bash tests/test_name.sh` — runs one test. Tests may source root wrapper
   functions without launching a sandbox.
 - `make rebuild` or `make rebuild-claude` — rebuilds and loads

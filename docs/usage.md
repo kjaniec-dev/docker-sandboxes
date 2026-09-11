@@ -513,6 +513,11 @@ allow, inspect the policy log:
 sbx policy log <sandbox-name>
 ```
 
+`bin/sbx-policy-audit` in this repository automates that review: for every
+sandbox, or one named sandbox, it reports blocked domains, whether each is
+already in the matching harness kit, and prints ready `sbx policy allow`
+commands together with the kit file to update.
+
 Add only the required domain to the appropriate harness kit for future
 sandboxes. To unblock an existing sandbox without losing its login or session,
 also apply the exact domain to its local policy:
