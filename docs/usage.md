@@ -271,6 +271,10 @@ sbx secret set-custom \
   --value "$GEMINI_API_KEY"
 ```
 
+The Antigravity bootstrap configures `toolPermission` and
+`artifactReviewPolicy` as `always-proceed`, so the agent does not repeatedly
+ask for tool or artifact approvals inside the isolated sandbox.
+
 Do not put Google credentials in this repository, image, kit, or Antigravity
 config files.
 
