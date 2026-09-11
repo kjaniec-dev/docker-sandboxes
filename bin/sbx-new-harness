@@ -1,0 +1,435 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+TARGET_ROOT="${SBX_NEW_HARNESS_ROOT:-$ROOT}"
+
+# Canonical shared tooling allowlist; keep harness kits in sync with it.
+TOOLING_KIT="$ROOT/harnesses/claude-code/kit/spec.yaml"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: sbx-new-harness <name> [--prefix <prefix>] [--base shell|claude-code|codex|opencode]
+
+Generates harnesses/<name>/ (Dockerfile, kit, launcher, bootstrap, verify),
+root bin/ delegates, and tests/test_<prefix>_layout.sh. Defaults: prefix is
+<name>, base is shell. Existing files are never overwritten.
+EOF
+}
+
+die() {
+  echo "sbx-new-harness: $*" >&2
+  exit 1
+}
+
+validate_slug() {
+  local label="$1" value="$2"
+  if [[ ! "$value" =~ ^[a-z0-9]([a-z0-9+-]*[a-z0-9])?$ ]]; then
+    die "invalid ${label}: '${value}' (expected lowercase letters, digits, '-' or '+')"
+  fi
+}
+
+render() {
+  sed \
+    -e "s|@NAME@|$NAME|g" \
+    -e "s|@PREFIX@|$PREFIX|g" \
+    -e "s|@DISPLAY@|$DISPLAY_NAME|g" \
+    -e "s|@BASE_IMAGE@|$BASE_IMAGE|g" \
+    -e "s|@INSTRUCTIONS_FILE@|$INSTRUCTIONS_FILE|g"
+}
+
+tooling_allow_lines() {
+  awk '/^    allow:/{f=1;next} f && /^ *- /{sub(/^ *- /,"");print;next} f{exit}' \
+    "$TOOLING_KIT" | sed 's/^/      - /'
+}
+
+kit_identity_block() {
+  case "$BASE" in
+  shell)
+    cat <<'EOF'
+sandbox:
+  image: @PREFIX@-sbx:local
+  # TODO: set the actual agent entry command.
+  entrypoint: [@PREFIX@]
+EOF
+    ;;
+  claude-code) echo 'extends: claude' ;;
+  codex) echo 'extends: codex' ;;
+  opencode) echo 'extends: opencode' ;;
+  esac | render
+}
+
+write_dockerfile() {
+  render >"$TARGET_ROOT/harnesses/$NAME/Dockerfile" <<'EOF'
+FROM docker/sandbox-templates:@BASE_IMAGE@
+
+ARG NODE_VERSION=24.19.0
+ARG GO_VERSION=1.26.6
+
+USER root
+ENV PATH=/usr/local/go/bin:/home/agent/go/bin:/home/agent/.local/bin:${PATH}
+
+COPY shared/install-system-toolchain.sh /tmp/install-system-toolchain.sh
+RUN NODE_VERSION="$NODE_VERSION" GO_VERSION="$GO_VERSION" bash /tmp/install-system-toolchain.sh
+
+COPY shared/install-user-toolchain.sh /tmp/install-user-toolchain.sh
+USER agent
+RUN bash /tmp/install-user-toolchain.sh
+EOF
+}
+
+write_kit() {
+  local kit="$TARGET_ROOT/harnesses/$NAME/kit/spec.yaml"
+  {
+    render <<'EOF'
+schemaVersion: "2"
+kind: sandbox
+name: @PREFIX@-sbx
+version: "1.0.0"
+displayName: @DISPLAY@ SBX
+description: Development defaults for @DISPLAY@ in Docker Sandboxes
+
+EOF
+    kit_identity_block
+    echo
+    render <<'EOF'
+args:
+  harness_root:
+    required: true
+  skills_root:
+    required: true
+
+environment:
+  variables:
+    HARNESS_ROOT: ${{ kit.args.harness_root }}
+    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
+
+setup:
+  install:
+    - command: 'bash "$HARNESS_ROOT/harnesses/@NAME@/scripts/bootstrap.sh"'
+      user: "1000"
+      description: Configure integrations and shared skills
+
+permissions:
+  network:
+    allow:
+EOF
+    tooling_allow_lines
+    render <<'EOF'
+      # TODO: add @DISPLAY@ provider and authentication domains.
+
+agentInstructions:
+  filename: @INSTRUCTIONS_FILE@
+  content: |
+    This sandbox directly mounts the host Git repository read/write.
+
+    Worktree rules:
+    - Use project-local `.worktrees/`.
+    - Verify `.worktrees/` is ignored by Git before creating a worktree.
+    - Prefer native worktree capability when available; otherwise use `git worktree`.
+    - Never create a sibling worktree outside the mounted repository.
+    - When switching into a worktree, activate that worktree path in Serena before semantic reads or edits.
+    - When returning to the primary checkout, reactivate the primary checkout in Serena.
+
+    Public repository safety:
+    - Do not commit credentials, API keys, tokens, agent session state or machine-specific paths.
+    - Keep generated images, caches and local configuration out of version control.
+
+    Tooling rules:
+    - Use project-local package-manager, lint, formatting and test versions when the repository defines them.
+    - Verify changes with the project-relevant checks before reporting completion.
+    - Use the preinstalled `playwright-cli` for browser automation, screenshots and frontend validation when a runnable local frontend exists.
+    - Prefer a repository's own Playwright scripts and configuration when it defines them; otherwise run `playwright-cli` directly.
+    - Use the preinstalled OpenJDK 25, Maven and Gradle for Java projects.
+EOF
+  } >"$kit"
+}
+
+write_launcher() {
+  render >"$TARGET_ROOT/harnesses/$NAME/bin/$PREFIX-sbx" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+TEMPLATE="@PREFIX@-sbx:local"
+KIT="$ROOT/harnesses/@NAME@/kit"
+
+SANDBOX_PREFIX="@PREFIX@"
+# shellcheck source=shared/launcher.sh
+source "$ROOT/shared/launcher.sh"
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
+EOF
+  chmod +x "$TARGET_ROOT/harnesses/$NAME/bin/$PREFIX-sbx"
+}
+
+write_bootstrap() {
+  render >"$TARGET_ROOT/harnesses/$NAME/scripts/bootstrap.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
+: "${HARNESS_ROOT:?HARNESS_ROOT must point to the sandboxes checkout}"
+
+# shellcheck source=../../../shared/skills.sh
+source "$HARNESS_ROOT/shared/skills.sh"
+
+# TODO: link the @DISPLAY@ skills discovery directory to the shared store:
+# link_shared_skills "$HOME/.@PREFIX@/skills"
+
+# TODO: register @DISPLAY@ integrations (MCP servers, plugins) idempotently.
+# Bootstrap runs at sandbox creation and must be safe to run repeatedly.
+
+echo '@PREFIX@-sbx bootstrap finished'
+EOF
+  chmod +x "$TARGET_ROOT/harnesses/$NAME/scripts/bootstrap.sh"
+}
+
+write_verify() {
+  render >"$TARGET_ROOT/harnesses/$NAME/scripts/verify.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+# shellcheck source=../../../shared/verify-toolchain.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../../shared/verify-toolchain.sh"
+
+# TODO: replace '@PREFIX@' with the actual @DISPLAY@ agent command.
+verify_toolchain_commands '@DISPLAY@ ' @PREFIX@ serena
+
+# TODO: check the @DISPLAY@ skills discovery directory, for example:
+# skills_dir="$HOME/.@PREFIX@/skills"
+# [[ -f "$skills_dir/using-superpowers/SKILL.md" ]] || {
+#   echo 'missing @DISPLAY@ skill: superpowers' >&2
+#   exit 1
+# }
+
+verify_toolchain '@DISPLAY@ ' raw
+
+echo '@PREFIX@-sbx verification passed'
+EOF
+  chmod +x "$TARGET_ROOT/harnesses/$NAME/scripts/verify.sh"
+}
+
+write_root_delegates() {
+  render >"$TARGET_ROOT/bin/$PREFIX-sbx" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+IMPLEMENTATION="$ROOT/harnesses/@NAME@/bin/@PREFIX@-sbx"
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  # The implementation path is resolved from the wrapper location above.
+  # shellcheck source=/dev/null
+  source "$IMPLEMENTATION"
+else
+  exec "$IMPLEMENTATION" "$@"
+fi
+EOF
+  chmod +x "$TARGET_ROOT/bin/$PREFIX-sbx"
+
+  render >"$TARGET_ROOT/bin/$PREFIX-sbx-rebuild" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
+SOURCE="${BASH_SOURCE[0]}"
+
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+# shellcheck source=/dev/null
+source "$ROOT/harnesses/@NAME@/bin/@PREFIX@-sbx"
+# shellcheck source=shared/rebuild.sh
+source "$ROOT/shared/rebuild.sh"
+rebuild_template "$ROOT/harnesses/@NAME@/Dockerfile"
+EOF
+  chmod +x "$TARGET_ROOT/bin/$PREFIX-sbx-rebuild"
+}
+
+write_layout_test() {
+  render >"$TARGET_ROOT/tests/test_$PREFIX"_layout.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+grep -Fq 'FROM docker/sandbox-templates:@BASE_IMAGE@' "$ROOT/harnesses/@NAME@/Dockerfile"
+grep -Fq 'install-system-toolchain.sh' "$ROOT/harnesses/@NAME@/Dockerfile"
+grep -Fq 'install-user-toolchain.sh' "$ROOT/harnesses/@NAME@/Dockerfile"
+[[ -f "$ROOT/harnesses/@NAME@/kit/spec.yaml" ]]
+[[ -x "$ROOT/harnesses/@NAME@/bin/@PREFIX@-sbx" ]]
+[[ -x "$ROOT/harnesses/@NAME@/scripts/bootstrap.sh" ]]
+[[ -x "$ROOT/harnesses/@NAME@/scripts/verify.sh" ]]
+[[ -x "$ROOT/bin/@PREFIX@-sbx" ]]
+[[ -x "$ROOT/bin/@PREFIX@-sbx-rebuild" ]]
+EOF
+  chmod +x "$TARGET_ROOT/tests/test_$PREFIX"_layout.sh
+}
+
+print_next_steps() {
+  cat <<EOF
+Generated harness '$NAME' (prefix '$PREFIX', base '$BASE') in $TARGET_ROOT:
+  harnesses/$NAME/Dockerfile
+  harnesses/$NAME/kit/spec.yaml
+  harnesses/$NAME/bin/$PREFIX-sbx
+  harnesses/$NAME/scripts/bootstrap.sh
+  harnesses/$NAME/scripts/verify.sh
+  bin/$PREFIX-sbx
+  bin/$PREFIX-sbx-rebuild
+  tests/test_${PREFIX}_layout.sh
+
+Finish the agent-specific TODOs in the kit, bootstrap, and verify scripts,
+then wire the harness into the repository by hand:
+
+1. Makefile: add rebuild-$PREFIX (./bin/$PREFIX-sbx-rebuild) and, if the
+   verify script runs inside a sandbox, verify-$PREFIX; extend 'rebuild'.
+2. README.md: list the new commands in the quick start and PATH sections.
+3. AGENTS.md: add the harness to Architecture, Commands, and the sandbox
+   naming rules; keep Node/Go pins synchronized.
+4. docs/usage.md: add a first-start section, the naming table row, and the
+   rebuild command.
+
+Build and try it:
+  ./bin/$PREFIX-sbx-rebuild
+  cd /path/to/target-repository && $PREFIX-sbx
+EOF
+}
+
+main() {
+  local name="" prefix="" base="shell"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --prefix)
+      prefix="${2:?--prefix requires a value}"
+      shift 2
+      ;;
+    --base)
+      base="${2:?--base requires a value}"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      return 0
+      ;;
+    -*)
+      usage
+      die "unknown option: $1"
+      ;;
+    *)
+      [[ -z "$name" ]] || {
+        usage
+        die "unexpected argument: $1"
+      }
+      name="$1"
+      shift
+      ;;
+    esac
+  done
+
+  [[ -n "$name" ]] || {
+    usage
+    die "missing harness name"
+  }
+  [[ -n "$prefix" ]] || prefix="$name"
+  validate_slug "harness name" "$name"
+  validate_slug "prefix" "$prefix"
+
+  case "$base" in
+  shell) BASE_IMAGE="shell-docker" ;;
+  claude-code) BASE_IMAGE="claude-code-docker" ;;
+  codex) BASE_IMAGE="codex-docker" ;;
+  opencode) BASE_IMAGE="opencode-docker" ;;
+  *) die "invalid --base: '$base' (expected shell, claude-code, codex, or opencode)" ;;
+  esac
+
+  NAME="$name"
+  PREFIX="$prefix"
+  BASE="$base"
+  DISPLAY_NAME="$(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
+  if [[ "$base" == claude-code ]]; then
+    INSTRUCTIONS_FILE="CLAUDE.md"
+  else
+    INSTRUCTIONS_FILE="AGENTS.md"
+  fi
+
+  [[ -f "$TOOLING_KIT" ]] || die "missing tooling allowlist source: $TOOLING_KIT"
+
+  local -a conflicts=()
+  local path
+  for path in \
+    "$TARGET_ROOT/harnesses/$NAME" \
+    "$TARGET_ROOT/bin/$PREFIX-sbx" \
+    "$TARGET_ROOT/bin/$PREFIX-sbx-rebuild" \
+    "$TARGET_ROOT/tests/test_$PREFIX"_layout.sh; do
+    if [[ -e "$path" ]]; then
+      conflicts+=("$path")
+    fi
+  done
+  if [[ ${#conflicts[@]} -gt 0 ]]; then
+    printf 'sbx-new-harness: refusing to overwrite existing paths:\n' >&2
+    printf '  %s\n' "${conflicts[@]}" >&2
+    exit 1
+  fi
+
+  mkdir -p \
+    "$TARGET_ROOT/harnesses/$NAME/bin" \
+    "$TARGET_ROOT/harnesses/$NAME/kit" \
+    "$TARGET_ROOT/harnesses/$NAME/scripts" \
+    "$TARGET_ROOT/bin" \
+    "$TARGET_ROOT/tests"
+
+  write_dockerfile
+  write_kit
+  write_launcher
+  write_bootstrap
+  write_verify
+  write_root_delegates
+  write_layout_test
+  print_next_steps
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

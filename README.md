@@ -36,6 +36,10 @@ update Superpowers and Playwright later (Caveman stays pinned):
 ./bin/sbx-skills --update
 ```
 
+Use `./bin/sbx-policy-audit` to review blocked network requests across
+sandboxes, and `./bin/sbx-new-harness <name>` to scaffold an additional
+harness with its root delegates and layout test.
+
 Migrating from the old launchers requires removing each old sandbox once with
 `sbx rm <sandbox-name>` and launching it again. This discards its sessions and
 sandbox-local configuration, not the mounted repository. Existing toolchain
