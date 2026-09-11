@@ -51,6 +51,27 @@ clean Go, uv and npm build/download caches in the same image layer, retaining
 installed tools and Playwright browsers. Rebuild templates to apply this size
 reduction; existing images and sandboxes are unaffected.
 
+Chromium is installed as `agent`, in that user's browser cache, using the
+Playwright version bundled with the global CLI. Only system dependencies are
+installed as root. Browser binaries are retained when download caches are
+cleaned. Images built before this correction need a rebuild and their
+sandboxes need recreation before the preinstalled browser is usable.
+
+All harness verification scripts call `shared/verify-toolchain.sh` for common
+tools and version checks, then check their agent-specific integrations and
+skills. To additionally launch Chromium and exercise a local page without
+network access, run inside a sandbox:
+
+```bash
+make -C /path/to/sandboxes verify-browser
+```
+
+Or from the host:
+
+```bash
+sbx exec <sandbox-name> bash /path/to/sandboxes/shared/verify-browser.sh
+```
+
 `sandbox.build` and author-time `mixins:` composition are not implemented by
 the 0.42.1 runtime, so custom images still use the rebuild commands below.
 

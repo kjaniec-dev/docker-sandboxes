@@ -1,10 +1,13 @@
-.PHONY: test verify verify-opencode verify-agy verify-junie rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-agy rebuild-junie
+.PHONY: test verify verify-browser verify-opencode verify-agy verify-junie rebuild rebuild-claude rebuild-codex rebuild-opencode rebuild-agy rebuild-junie
 
 test:
 	./tests/run.sh
 
 verify:
 	./harnesses/claude-code/scripts/verify.sh
+
+verify-browser:
+	bash shared/verify-browser.sh
 
 verify-opencode:
 	./harnesses/opencode/scripts/verify.sh
