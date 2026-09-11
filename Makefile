@@ -19,7 +19,7 @@ verify-junie:
 	./harnesses/junie/scripts/verify.sh
 
 rebuild:
-	$(MAKE) rebuild-claude
+	$(MAKE) rebuild-claude rebuild-codex rebuild-opencode rebuild-agy rebuild-junie
 
 rebuild-claude:
 	./bin/claude-sbx-rebuild

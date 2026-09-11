@@ -10,6 +10,9 @@ for target in test verify rebuild rebuild-claude rebuild-codex rebuild-opencode 
   }
 done
 
+rebuild_body="$(sed -n '/^rebuild:/,/^[^[:space:]]/p' "$ROOT/Makefile")"
+grep -Fq '$(MAKE) rebuild-claude rebuild-codex rebuild-opencode rebuild-agy rebuild-junie' <<<"$rebuild_body"
+
 grep -Fq './bin/claude-sbx-rebuild' "$ROOT/README.md"
 grep -Fq './bin/codex-sbx-rebuild' "$ROOT/README.md"
 grep -Fq '# Claude, Codex, OpenCode, Antigravity, and Junie Docker Sandboxes' "$ROOT/README.md"
