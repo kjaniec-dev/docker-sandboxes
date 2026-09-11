@@ -129,9 +129,9 @@ From this repository, build one or more templates:
 These commands pull the current agent base image, build `claude-sbx:local`,
 `codex-sbx:local`, `opencode-sbx:local`, `agy-sbx:local`, and `junie-sbx:local`, export
 their images under `.build/`, and load them into Docker Sandboxes.
-`make rebuild` is kept as a compatibility alias for the Claude rebuild; use
+`make rebuild` rebuilds all five templates in sequence. Use
 `make rebuild-claude`, `make rebuild-codex`, `make rebuild-opencode`,
-`make rebuild-agy`, or `make rebuild-junie` when choosing explicitly. The
+`make rebuild-agy`, or `make rebuild-junie` when choosing a single harness. The
 Antigravity and Junie builds use the neutral shell base image; Antigravity
 contains a pinned CLI release and Junie installs its CLI during bootstrap.
 
