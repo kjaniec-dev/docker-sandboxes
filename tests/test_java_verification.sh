@@ -18,6 +18,7 @@ printf '%s\n' "$config" >"$tmp/home/.gemini/config/mcp_config.json"
 mkdir -p "$tmp/home/.gemini/antigravity-cli"
 printf '%s\n' '{"toolPermission":"always-proceed","artifactReviewPolicy":"always-proceed"}' \
   >"$tmp/home/.gemini/antigravity-cli/settings.json"
+printf '%s\n' '{"brave":true}' >"$tmp/home/.junie/config.json"
 cat >"$tmp/mock-command" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -144,6 +145,14 @@ for harness in claude-code codex opencode antigravity-cli junie; do
       exit 1
     }
   done
+  if [[ "$harness" == junie ]]; then
+    mv "$tmp/home/.junie/config.json" "$tmp/home/.junie/config.missing"
+    status=0
+    HOME="$tmp/home" PATH="$tmp/bin:$PATH" bash "$verify" >"$tmp/output" 2>"$tmp/error" || status=$?
+    mv "$tmp/home/.junie/config.missing" "$tmp/home/.junie/config.json"
+    [[ "$status" == 1 && ! -s "$tmp/output" ]]
+    grep -Fxq 'unexpected Junie permission configuration' "$tmp/error"
+  fi
   for override in MOCK_JAVA_VERSION=21.0.4 MOCK_JAVAC_VERSION=21.0.4 MOCK_JAVA_VERSION=unknown MOCK_JAVAC_VERSION=unknown MOCK_FAIL_COMMAND=java MOCK_FAIL_COMMAND=javac; do
     if env HOME="$tmp/home" PATH="$tmp/bin:$PATH" MOCK_PROXY_DIAGNOSTIC='Picked up JAVA_TOOL_OPTIONS: -Dtest=25.0' "$override" bash "$verify" >"$tmp/output" 2>&1; then
       echo "$harness accepted invalid Java verification: $override" >&2

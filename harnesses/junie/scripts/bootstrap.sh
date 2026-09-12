@@ -35,6 +35,37 @@ check_junie_mcp_managed_entries() {
   fi
 }
 
+ensure_junie_config() {
+  local config_file="$1"
+  local config_dir
+  local temporary_file
+
+  config_dir="$(dirname "$config_file")"
+  mkdir -p "$config_dir"
+
+  if [[ -e "$config_file" ]] && ! jq empty "$config_file" >/dev/null 2>&1; then
+    printf 'Junie bootstrap: invalid JSON in %s\n' "$config_file" >&2
+    return 1
+  fi
+
+  temporary_file="$(mktemp "$config_dir/.config.json.XXXXXX")"
+  if [[ -e "$config_file" ]]; then
+    if ! jq '. + {"brave": true}' "$config_file" >"$temporary_file"; then
+      rm -f "$temporary_file"
+      printf 'Junie bootstrap: failed to update %s\n' "$config_file" >&2
+      return 1
+    fi
+  else
+    if ! jq -n '{"brave": true}' >"$temporary_file"; then
+      rm -f "$temporary_file"
+      printf 'Junie bootstrap: failed to create %s\n' "$config_file" >&2
+      return 1
+    fi
+  fi
+
+  mv -f "$temporary_file" "$config_file"
+}
+
 ensure_junie_mcp_config() {
   local config_file="$1"
   local config_dir
@@ -117,6 +148,7 @@ source "$HARNESS_ROOT/shared/skills.sh"
 
 link_shared_skills "$HOME/.junie/skills"
 
+ensure_junie_config "$HOME/.junie/config.json"
 ensure_junie_mcp_config "$HOME/.junie/mcp/mcp.json"
 
 printf '%s\n' 'Junie bootstrap setup complete.'

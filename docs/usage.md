@@ -304,9 +304,13 @@ junie-sbx
 unset JUNIE_API_KEY
 ```
 
-Junie bootstrap registers Serena and Context7 in `~/.junie/mcp/mcp.json`
-and links the shared skill store at `~/.junie/skills/`. Do not put Junie credentials,
-MCP configuration, or session state in the image or repository.
+Junie bootstrap enables Brave mode in `~/.junie/config.json`, registers Serena
+and Context7 in `~/.junie/mcp/mcp.json`, and links the shared skill store at
+`~/.junie/skills/`. This disables approval prompts, including for terminal
+commands, file access, and MCP tools. The target repository is mounted
+read/write, so use this only when you explicitly want unattended changes; the
+bootstrap intentionally restores Brave mode on each run. Do not put Junie
+credentials, MCP configuration, or session state in the image or repository.
 
 ## Start a harness
 

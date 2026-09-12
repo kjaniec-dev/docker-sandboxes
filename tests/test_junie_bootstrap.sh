@@ -7,6 +7,15 @@ trap 'rm -rf "$tmp"' EXIT
 
 source "$ROOT/harnesses/junie/scripts/bootstrap.sh"
 
+settings="$tmp/.junie/config.json"
+mkdir -p "$(dirname "$settings")"
+printf '%s\n' '{"model":"sonnet","brave":false}' >"$settings"
+ensure_junie_config "$settings"
+jq -e '.model == "sonnet" and .brave == true' "$settings" >/dev/null
+
+ensure_junie_config "$settings"
+jq -e 'keys | sort == ["brave", "model"]' "$settings" >/dev/null
+
 config="$tmp/.junie/mcp/mcp.json"
 ensure_junie_mcp_config "$config"
 jq -e '
@@ -64,6 +73,7 @@ jq -e '
   .mcpServers.serena.command == "serena" and
   .mcpServers.context7.url == "https://mcp.context7.com/mcp"
 ' "$bootstrap_home/.junie/mcp/mcp.json" >/dev/null
+jq -e '.brave == true' "$bootstrap_home/.junie/config.json" >/dev/null
 [[ ! -e "$bootstrap_home/.cache/claude-sbx/junie-bootstrap-v1" ]]
 
 echo 'test_junie_bootstrap.sh: PASS'

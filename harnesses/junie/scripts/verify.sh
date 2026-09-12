@@ -39,4 +39,9 @@ jq -e '
   exit 1
 }
 
+jq -e '.brave == true' "$HOME/.junie/config.json" >/dev/null || {
+  echo 'unexpected Junie permission configuration' >&2
+  exit 1
+}
+
 echo 'junie-sbx verification passed'
