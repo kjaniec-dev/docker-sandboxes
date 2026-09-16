@@ -17,6 +17,16 @@ KIT="$ROOT/harnesses/codex/kit"
 SANDBOX_PREFIX="codex"
 # shellcheck source=shared/launcher.sh
 source "$ROOT/shared/launcher.sh"
+DEFAULT_AGENT_ARGS=(--approve-for-me)
+DEFAULT_AGENT_ARG_CONFLICTS=(
+  --approve-for-me
+  --not-so-yolo
+  --ask-for-approval
+  -a
+  --dangerously-bypass-approvals-and-sandbox
+  --sandbox
+  --yolo
+)
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   main "$@"

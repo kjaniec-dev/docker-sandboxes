@@ -17,6 +17,8 @@ KIT="$ROOT/harnesses/opencode/kit"
 SANDBOX_PREFIX="opencode"
 # shellcheck source=shared/launcher.sh
 source "$ROOT/shared/launcher.sh"
+DEFAULT_AGENT_ARGS=(--auto)
+DEFAULT_AGENT_ARG_CONFLICTS=(--auto --no-auto)
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   main "$@"

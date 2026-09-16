@@ -35,7 +35,7 @@ for skill in using-superpowers brainstorming caveman playwright-cli; do
   mkdir -p "$tmp/shared-skills/$skill"
   touch "$tmp/shared-skills/$skill/SKILL.md"
 done
-mkdir -p "$tmp/home/.gemini/config"
+mkdir -p "$tmp/home/.gemini/config" "$tmp/home/.gemini/antigravity-cli"
 ln -s "$tmp/shared-skills" "$tmp/home/.gemini/config/skills"
 printf '%s\n' '{"mcpServers":{"serena":{"command":"serena","args":["start-mcp-server","--context=ide-assistant","--project-from-cwd"],"disabled":false},"context7":{"serverUrl":"https://mcp.context7.com/mcp","disabled":false}}}' \
   >"$tmp/home/.gemini/config/mcp_config.json"
