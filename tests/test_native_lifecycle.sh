@@ -68,7 +68,10 @@ for agent in claude codex opencode agy junie; do
     (.[0] | arg("--kit-arg";"skills_root")) == $store and
     (.[0] | option("--name")) == .[1][2] and
     (.[1][2] | startswith($agent + "-repo-with-quotes-and-spaces-")) and
-    .[1][-3:] == ["--","--prompt","hello \"world\""] and
+     (.[1] as $run | ($run | index("--")) as $separator | $run[($separator + 1):]) ==
+       (if $agent == "codex" then ["--approve-for-me","--prompt","hello \"world\""]
+        elif $agent == "opencode" then ["--auto","--prompt","hello \"world\""]
+        else ["--prompt","hello \"world\""] end) and
     (if $agent == "junie" then .[1][3:5] == ["--env","JUNIE_API_KEY="] else .[1][3] == "--" end)
   ' "$MOCK_LOG" >/dev/null
   : >"$MOCK_STATE"
@@ -89,7 +92,24 @@ for agent in claude codex opencode agy junie; do
   ) 2>/dev/null || status=$?
   [[ "$status" == 3 ]]
 done
+
+for agent_and_flag in 'codex --not-so-yolo' 'opencode --no-auto'; do
+  agent="${agent_and_flag%% *}"
+  flag="${agent_and_flag#* }"
+  export MOCK_AGENT="$agent"
+  : >"$MOCK_STATE"
+  : >"$MOCK_LOG"
+  (
+    cd "$repo"
+    "$ROOT/bin/$agent-sbx" "$flag" --prompt override
+  )
+  jq -se --arg flag "$flag" '
+    (.[1] as $run | ($run | index("--")) as $separator | $run[($separator + 1):]) == [$flag,"--prompt","override"]
+  ' "$MOCK_LOG" >/dev/null
+done
+
 # A key is a session override, never a creation argument.
+export MOCK_AGENT=junie
 : >"$MOCK_STATE"
 : >"$MOCK_LOG"
 (

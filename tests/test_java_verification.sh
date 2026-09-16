@@ -12,6 +12,7 @@ for directory in .claude/skills .agents/skills .config/opencode/skills .gemini/c
   done
 done
 mkdir -p "$tmp/home/.junie/mcp"
+mkdir -p "$tmp/home/.gemini/antigravity-cli"
 config='{"mcpServers":{"serena":{"command":"serena","args":["start-mcp-server","--context=ide-assistant","--project-from-cwd"]},"context7":{"url":"https://mcp.context7.com/mcp","serverUrl":"https://mcp.context7.com/mcp"}}}'
 printf '%s\n' "$config" >"$tmp/home/.junie/mcp/mcp.json"
 printf '%s\n' "$config" >"$tmp/home/.gemini/config/mcp_config.json"

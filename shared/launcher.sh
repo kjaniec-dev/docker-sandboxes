@@ -2,6 +2,9 @@
 set -euo pipefail
 
 # Sourced by harness launchers after their paths and agent identity are set.
+DEFAULT_AGENT_ARGS=()
+DEFAULT_AGENT_ARG_CONFLICTS=()
+
 sandbox_name_for_repo() {
   local repo_root="$1"
   local base slug digest
@@ -41,7 +44,7 @@ main() {
   }
 
   local repo_root name store sandboxes
-  local -a run_args mounts
+  local -a run_args mounts forwarded_args default_agent_args default_agent_arg_conflicts
   if ! repo_root="$(repo_root_from_cwd 2>/dev/null)"; then
     echo "$SANDBOX_PREFIX-sbx: run this command from inside a Git repository" >&2
     return 2
@@ -83,5 +86,29 @@ main() {
   if [[ "$SANDBOX_PREFIX" == junie ]]; then
     run_args+=(--env "JUNIE_API_KEY=${JUNIE_API_KEY:-}")
   fi
-  sbx "${run_args[@]}" -- "$@"
+
+  forwarded_args=("$@")
+  default_agent_args=()
+  default_agent_arg_conflicts=()
+  if declare -p DEFAULT_AGENT_ARGS >/dev/null 2>&1; then
+    default_agent_args=("${DEFAULT_AGENT_ARGS[@]}")
+  fi
+  if declare -p DEFAULT_AGENT_ARG_CONFLICTS >/dev/null 2>&1; then
+    default_agent_arg_conflicts=("${DEFAULT_AGENT_ARG_CONFLICTS[@]}")
+  fi
+
+  local argument conflict use_defaults=true
+  for argument in "${forwarded_args[@]}"; do
+    for conflict in "${default_agent_arg_conflicts[@]}"; do
+      if [[ "$argument" == "$conflict" || "$argument" == "$conflict="* ]]; then
+        use_defaults=false
+        break 2
+      fi
+    done
+  done
+  if [[ "$use_defaults" == true ]]; then
+    forwarded_args=("${default_agent_args[@]}" "${forwarded_args[@]}")
+  fi
+
+  sbx "${run_args[@]}" -- "${forwarded_args[@]}"
 }
