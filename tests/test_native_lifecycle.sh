@@ -73,7 +73,21 @@ for agent in claude codex opencode agy junie; do
         elif $agent == "opencode" then ["--auto","--prompt","hello \"world\""]
         else ["--prompt","hello \"world\""] end) and
     (if $agent == "junie" then .[1][3:5] == ["--env","JUNIE_API_KEY="] else .[1][3] == "--" end)
+   ' "$MOCK_LOG" >/dev/null
+
+  : >"$MOCK_STATE"
+  : >"$MOCK_LOG"
+  (
+    cd "$repo"
+    "$ROOT/bin/$agent-sbx"
+  )
+  jq -se --arg agent "$agent" '
+    (.[1] as $run | ($run | index("--")) as $separator | $run[($separator + 1):]) ==
+      (if $agent == "codex" then ["--approve-for-me"]
+       elif $agent == "opencode" then ["--auto"]
+       else [] end)
   ' "$MOCK_LOG" >/dev/null
+
   : >"$MOCK_STATE"
   # Provision failure must stop before attachment, even with an existing name.
   : >"$MOCK_LOG"

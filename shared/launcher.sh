@@ -90,25 +90,35 @@ main() {
   forwarded_args=("$@")
   default_agent_args=()
   default_agent_arg_conflicts=()
-  if declare -p DEFAULT_AGENT_ARGS >/dev/null 2>&1; then
+  if declare -p DEFAULT_AGENT_ARGS >/dev/null 2>&1 && ((${#DEFAULT_AGENT_ARGS[@]} > 0)); then
     default_agent_args=("${DEFAULT_AGENT_ARGS[@]}")
   fi
-  if declare -p DEFAULT_AGENT_ARG_CONFLICTS >/dev/null 2>&1; then
+  if declare -p DEFAULT_AGENT_ARG_CONFLICTS >/dev/null 2>&1 && ((${#DEFAULT_AGENT_ARG_CONFLICTS[@]} > 0)); then
     default_agent_arg_conflicts=("${DEFAULT_AGENT_ARG_CONFLICTS[@]}")
   fi
 
   local argument conflict use_defaults=true
-  for argument in "${forwarded_args[@]}"; do
-    for conflict in "${default_agent_arg_conflicts[@]}"; do
-      if [[ "$argument" == "$conflict" || "$argument" == "$conflict="* ]]; then
-        use_defaults=false
-        break 2
-      fi
+  if ((${#forwarded_args[@]} > 0 && ${#default_agent_arg_conflicts[@]} > 0)); then
+    for argument in "${forwarded_args[@]}"; do
+      for conflict in "${default_agent_arg_conflicts[@]}"; do
+        if [[ "$argument" == "$conflict" || "$argument" == "$conflict="* ]]; then
+          use_defaults=false
+          break 2
+        fi
+      done
     done
-  done
-  if [[ "$use_defaults" == true ]]; then
-    forwarded_args=("${default_agent_args[@]}" "${forwarded_args[@]}")
+  fi
+  if [[ "$use_defaults" == true && ${#default_agent_args[@]} -gt 0 ]]; then
+    if ((${#forwarded_args[@]} > 0)); then
+      forwarded_args=("${default_agent_args[@]}" "${forwarded_args[@]}")
+    else
+      forwarded_args=("${default_agent_args[@]}")
+    fi
   fi
 
-  sbx "${run_args[@]}" -- "${forwarded_args[@]}"
+  if ((${#forwarded_args[@]} > 0)); then
+    sbx "${run_args[@]}" -- "${forwarded_args[@]}"
+  else
+    sbx "${run_args[@]}" --
+  fi
 }
