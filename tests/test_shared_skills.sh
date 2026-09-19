@@ -27,9 +27,14 @@ git() {
   fi
 }
 sbx() {
+  if [[ "$*" == 'skills ls --json' ]]; then
+    jq -cn --arg store "$store" '{store:$store,skills:[]}'
+    return 0
+  fi
   echo 'Unexpected skill download' >&2
   return 91
 }
+[[ "$(shared_skills_store)" == "$store" ]]
 ensure_shared_skills "$store"
 [[ -d "$store/caveman" && ! -L "$store/caveman" ]] || {
   echo 'Caveman must be a real native-store directory' >&2
@@ -45,14 +50,6 @@ ensure_shared_skills "$store" --update 2>/dev/null || status=$?
   echo 'Skill update failure was swallowed' >&2
   exit 1
 }
-export SHARED_SKILLS_ROOT="$store"
-link_shared_skills "$tmp/discovery/skills"
-link_shared_skills "$tmp/discovery/skills"
-[[ "$(readlink "$tmp/discovery/skills")" == "$store" ]]
-mkdir -p "$tmp/nonempty"
-touch "$tmp/nonempty/user-file"
-if (link_shared_skills "$tmp/nonempty") 2>/dev/null; then exit 1; fi
-[[ -f "$tmp/nonempty/user-file" ]]
 # Never publish an unverified checkout.
 mkdir -p "$tmp/bad-store"
 for skill in "${SUPERPOWERS_SKILLS[@]}" playwright-cli; do

@@ -7,22 +7,14 @@ description: Private development defaults for Claude Code in Docker Sandboxes
 
 extends: claude
 
-args:
-  harness_root:
-    required: true
-  skills_root:
-    required: true
-
-environment:
-  variables:
-    HARNESS_ROOT: ${{ kit.args.harness_root }}
-    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
+sandbox:
+  image: claude-sbx:local
 
 setup:
   install:
-    - command: 'bash "$HARNESS_ROOT/harnesses/claude-code/scripts/bootstrap.sh"'
+    - command: 'bash /usr/local/lib/claude-sbx/bootstrap.sh'
       user: "1000"
-      description: Configure integrations and shared skills
+      description: Configure Claude plugins
 
 permissions:
   network:

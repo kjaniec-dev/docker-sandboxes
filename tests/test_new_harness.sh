@@ -47,7 +47,12 @@ grep -Fq 'install-user-toolchain.sh' "$target/harnesses/demo/Dockerfile"
 grep -Fq 'name: demo-sbx' "$target/harnesses/demo/kit/spec.yaml"
 grep -Fq 'image: demo-sbx:local' "$target/harnesses/demo/kit/spec.yaml"
 grep -Fq 'harnesses/demo/scripts/bootstrap.sh' "$target/harnesses/demo/kit/spec.yaml"
+grep -Fq 'harness_root:' "$target/harnesses/demo/kit/spec.yaml"
 grep -Fq 'kit.args.harness_root' "$target/harnesses/demo/kit/spec.yaml"
+if grep -Eq 'skills_root|SHARED_SKILLS_ROOT' "$target/harnesses/demo/kit/spec.yaml"; then
+  echo 'generated kit contains the obsolete skills-root contract' >&2
+  exit 1
+fi
 grep -Fq 'extends:' "$target/harnesses/demo/kit/spec.yaml" && {
   echo 'unexpected extends in shell-base kit' >&2
   exit 1
@@ -59,11 +64,17 @@ diff <(allow_block "$target/harnesses/demo/kit/spec.yaml") \
 grep -Fq 'TEMPLATE="demo-sbx:local"' "$target/harnesses/demo/bin/demo-sbx"
 grep -Fq 'SANDBOX_PREFIX="demo"' "$target/harnesses/demo/bin/demo-sbx"
 grep -Fq 'shared/launcher.sh' "$target/harnesses/demo/bin/demo-sbx"
+grep -Fq -- '--skills=readonly' "$ROOT/shared/launcher.sh"
+grep -Fq -- '--kit-arg "harness_root=$ROOT"' "$ROOT/shared/launcher.sh"
 grep -Fq 'harnesses/demo/bin/demo-sbx' "$target/bin/demo-sbx"
 grep -Fq 'shared/rebuild.sh' "$target/bin/demo-sbx-rebuild"
 grep -Fq 'harnesses/demo/Dockerfile' "$target/bin/demo-sbx-rebuild"
 grep -Fq 'verify-toolchain.sh' "$target/harnesses/demo/scripts/verify.sh"
-grep -Fq 'skills.sh' "$target/harnesses/demo/scripts/bootstrap.sh"
+if grep -Eq 'shared/skills\.sh|link_shared_skills' \
+  "$target/harnesses/demo/scripts/bootstrap.sh"; then
+  echo 'generated bootstrap contains obsolete shared-skills linking' >&2
+  exit 1
+fi
 
 # Generated shell sources parse, and the generated layout test passes.
 while IFS= read -r -d '' file; do

@@ -7,22 +7,22 @@ description: Development defaults for Codex in Docker Sandboxes
 
 extends: codex
 
+sandbox:
+  image: codex-sbx:local
+
 args:
   harness_root:
-    required: true
-  skills_root:
     required: true
 
 environment:
   variables:
     HARNESS_ROOT: ${{ kit.args.harness_root }}
-    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
 
 setup:
   install:
     - command: 'bash "$HARNESS_ROOT/harnesses/codex/scripts/bootstrap.sh"'
       user: "1000"
-      description: Configure integrations and shared skills
+      description: Configure integrations
 
 permissions:
   network:

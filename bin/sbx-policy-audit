@@ -95,7 +95,7 @@ audit_sandbox() {
 
 main() {
   command -v sbx >/dev/null 2>&1 || {
-    echo "sbx-policy-audit: 'sbx' not found. Install Docker Sandboxes 0.42.1 or newer." >&2
+    echo "sbx-policy-audit: 'sbx' not found. Install Docker Sandboxes 0.43.0 or newer." >&2
     return 1
   }
   command -v jq >/dev/null 2>&1 || {

@@ -12,12 +12,15 @@ Each harness owns its agent-specific
 files under `harnesses/<name>/`:
 
 1. `Dockerfile` builds `claude-sbx:local`, `codex-sbx:local`,
-   `opencode-sbx:local`, `agy-sbx:local`, or `junie-sbx:local`. It contains the toolchain
-   only; no agent configuration or credentials.
+   `opencode-sbx:local`, `agy-sbx:local`, or `junie-sbx:local`. It contains the
+   toolchain and, for Claude, the bootstrap script required by the image; it
+   must not bake credentials, session state, or installed agent configuration.
 2. `kit/spec.yaml` is a full sandbox kit defining the agent, network-egress
    allowlist, instructions and synchronous `setup.install` bootstrap.
    The kit is applied only when a sandbox is created.
-3. `bin/` launches or reuses the harness sandbox through `sbx create` and `sbx run --name`.
+3. `bin/` launches or reuses direct harness sandboxes through `sbx create` and
+   `sbx run --name`; Claude applies `~/.sbxenv.yaml` with `sbx env create --name`
+   before `sbx run --name`.
 4. `scripts/bootstrap.sh` installs or registers agent-specific integrations
    during creation; `scripts/verify.sh` verifies the resulting sandbox.
 
@@ -31,17 +34,20 @@ Root commands in `bin/` are thin delegates:
 
 Do not bake Claude plugins, Codex/OpenCode/Antigravity/Junie MCP configuration,
 credentials, or session state into any image. Docker Sandboxes recreates
-agent-managed configuration when a sandbox is created. Claude plugins belong
-in the Claude bootstrap; agent MCP registration belongs in each bootstrap.
-Superpowers, pinned Caveman and Playwright skills live in the host's native
-sbx skills store, managed by `bin/sbx-skills` and `shared/skills.sh`. Bootstraps
-link their discovery directories to the explicitly mounted shared store.
+agent-managed configuration when a sandbox is created. Claude plugins are
+installed by the bootstrap baked into the Claude image; agent MCP registration
+belongs in each bootstrap. Superpowers, pinned Caveman and Playwright skills
+live in the host's native `sbx` skills store, managed by `bin/sbx-skills` and
+`shared/skills.sh`. Direct launchers request `--skills=readonly`, and Claude's
+environment declares `skills: readonly`; no harness manually mounts or symlinks
+the skills store.
 
 Mount model: the target repository is mounted read/write at the same absolute
-path inside its sandbox. When it differs from this repository, this harness
-repository is mounted read-only so bootstrap and verification scripts remain
-available. The shared skills store is also mounted read/write at its original
-absolute path, intentionally sharing skill changes across all five agents.
+path inside its sandbox. For direct non-Claude harnesses, when the target differs
+from this repository, this harness repository is mounted read-only so bootstrap
+and verification scripts remain available. Claude's bootstrap is baked into its
+image, so its environment does not mount this harness repository. Native skills
+access is managed by SBX rather than an explicit host-path mount.
 
 ## Commands
 
@@ -64,9 +70,10 @@ absolute path, intentionally sharing skill changes across all five agents.
 - `make rebuild-opencode` — rebuilds and loads `opencode-sbx:local`.
 - `make rebuild-agy` — rebuilds and loads `agy-sbx:local`.
 - `make rebuild-junie` — rebuilds and loads `junie-sbx:local`.
-- `make verify` — runs the Claude verification script. It is intended to run
-  inside a sandbox via `sbx exec`, as described in `docs/usage.md`; it will
-  fail on the host because sandbox-only tools are absent.
+- `make verify` — runs the Claude verification script when this repository is
+  the mounted workspace. It is intended to run inside a sandbox via `sbx exec`,
+  as described in `docs/usage.md`; it will fail on the host because
+  sandbox-only tools are absent.
   `make verify-opencode`, `make verify-agy`, and `make verify-junie` run the
   corresponding verification scripts.
 
@@ -95,8 +102,11 @@ absolute path, intentionally sharing skill changes across all five agents.
   apply a sandbox-scoped allow rule as described above.
 - OpenJDK 25, Maven, and Gradle are present in all templates and verified by
   all verification scripts.
-- Require sbx 0.42.1+ and host jq. Launchers generate no environment files;
-  Junie API keys are session-only overrides on `sbx run`.
+- Require sbx 0.43.0+ and host jq. Launchers do not generate environment files;
+  Claude reads the user-owned `~/.sbxenv.yaml`, and Junie API keys are
+  session-only overrides on `sbx run`.
+- Kit and native-skills settings apply when a sandbox is created. Remove and
+  recreate the affected sandbox after changing either setting.
 - All bootstrap scripts must remain idempotent for explicit repair runs.
   Native `setup.install` runs them at creation, not on every attachment.
   Caveman is a Claude plugin and a pinned shared skill; do not run its

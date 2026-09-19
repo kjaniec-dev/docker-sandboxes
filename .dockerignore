@@ -1,5 +1,13 @@
 # Images only consume the shared toolchain installers.
 **
 !shared/
+shared/*
 !shared/install-system-toolchain.sh
 !shared/install-user-toolchain.sh
+!harnesses/
+harnesses/*
+!harnesses/claude-code/
+harnesses/claude-code/*
+!harnesses/claude-code/scripts/
+harnesses/claude-code/scripts/*
+!harnesses/claude-code/scripts/bootstrap.sh

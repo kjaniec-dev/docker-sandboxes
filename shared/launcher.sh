@@ -25,16 +25,9 @@ ensure_worktrees_ignored() {
   git -C "$repo_root" check-ignore -q "$probe"
 }
 
-template_exists() {
-  local repository="${TEMPLATE%:*}"
-  local tag="${TEMPLATE##*:}"
-  sbx template ls --json | jq -e --arg repository "$repository" --arg tag "$tag" \
-    'any(.images[]; ((.repository | split("/") | last) == $repository and .tag == $tag))' >/dev/null
-}
-
 main() {
   command -v sbx >/dev/null 2>&1 || {
-    echo "$SANDBOX_PREFIX-sbx: 'sbx' not found. Install Docker Sandboxes 0.42.1 or newer." >&2
+    echo "$SANDBOX_PREFIX-sbx: 'sbx' not found. Install Docker Sandboxes 0.43.0 or newer." >&2
     return 1
   }
 
@@ -43,7 +36,7 @@ main() {
     return 1
   }
 
-  local repo_root name store sandboxes
+  local repo_root name sandboxes store
   local -a run_args mounts forwarded_args default_agent_args default_agent_arg_conflicts
   if ! repo_root="$(repo_root_from_cwd 2>/dev/null)"; then
     echo "$SANDBOX_PREFIX-sbx: run this command from inside a Git repository" >&2
@@ -56,12 +49,6 @@ main() {
     return 3
   fi
 
-  if ! template_exists; then
-    printf "%s-sbx: template '%s' is not loaded.\nRun:\n  %s/bin/%s-sbx-rebuild\n" \
-      "$SANDBOX_PREFIX" "$TEMPLATE" "$ROOT" "$SANDBOX_PREFIX" >&2
-    return 4
-  fi
-
   name="$(sandbox_name_for_repo "$repo_root")"
   run_args=(run --name "$name")
   # shellcheck source=shared/skills.sh
@@ -70,14 +57,13 @@ main() {
   ensure_shared_skills "$store" || return
   mounts=("$repo_root")
   [[ "$repo_root" == "$ROOT" ]] || mounts+=("$ROOT:ro")
-  mounts+=("$store")
   # Reattachment must not pass workspaces again (sbx rejects them on reuse).
   sandboxes="$(sbx ls --json)" || return
   if ! jq -e --arg name "$name" 'any(.sandboxes[]; .name == $name)' <<<"$sandboxes" >/dev/null; then
     # Native create permits credential-binding prompts on the first launch.
     # Keep creation separate so Junie credentials remain session-only.
-    sbx create --name "$name" --template "$TEMPLATE" \
-      --kit-arg "harness_root=$ROOT" --kit-arg "skills_root=$store" \
+    sbx create --name "$name" --skills=readonly \
+      --kit-arg "harness_root=$ROOT" \
       "$KIT" "${mounts[@]}" || return
   fi
 

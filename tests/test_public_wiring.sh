@@ -16,6 +16,22 @@ grep -Fq '$(MAKE) rebuild-claude rebuild-codex rebuild-opencode rebuild-agy rebu
 grep -Fq './bin/claude-sbx-rebuild' "$ROOT/README.md"
 grep -Fq './bin/codex-sbx-rebuild' "$ROOT/README.md"
 grep -Fq '# Claude, Codex, OpenCode, Antigravity, and Junie Docker Sandboxes' "$ROOT/README.md"
+grep -Fq 'Docker Sandboxes 0.43.0' "$ROOT/README.md"
+grep -Fq 'Docker Sandboxes (`sbx`), minimum version 0.43.0' "$ROOT/docs/usage.md"
+grep -Fq 'native read-only `skills` mode' "$ROOT/README.md"
+grep -Fq 'sbx create --name' "$ROOT/docs/usage.md"
+grep -Fq -- '--skills=readonly' "$ROOT/docs/usage.md"
+grep -Fq 'sbx inspect <sandbox-name>' "$ROOT/docs/usage.md"
+grep -Fq 'Signed git kits' "$ROOT/docs/usage.md"
+grep -Fq 'credential' "$ROOT/docs/usage.md"
+grep -Fq 'agent: /absolute/path/to/claude-sbx/harnesses/claude-code/kit' "$ROOT/docs/usage.md"
+grep -Fq 'workspace: ${{ env.projectDir }}' "$ROOT/docs/usage.md"
+grep -Fq 'skills: readonly' "$ROOT/docs/usage.md"
+grep -Fq 'outside any mounted repository' "$ROOT/docs/usage.md"
+grep -Fq 'sbx env create --auto-approve --name <deterministic-name>' "$ROOT/docs/usage.md"
+grep -Fq 'arguments such as' "$ROOT/docs/usage.md"
+grep -Fq 'sbx secret set mcp:<server>:client_secret' "$ROOT/docs/usage.md"
+grep -Fq 'mcp:<server>.client_secret' "$ROOT/docs/usage.md"
 grep -Fq './bin/agy-sbx-rebuild' "$ROOT/README.md"
 grep -Fq 'ln -sfn "$PWD/bin/agy-sbx"' "$ROOT/README.md"
 grep -Fq 'agy-sbx' "$ROOT/README.md"
@@ -71,6 +87,11 @@ grep -Fq 'junie-sbx:local' "$ROOT/docs/usage.md"
 grep -Fq 'junie-<repo-slug>-<8-hex-path-digest>' "$ROOT/docs/usage.md"
 grep -Fq 'make rebuild-junie' "$ROOT/docs/usage.md"
 grep -Fq 'harnesses/junie/scripts/verify.sh' "$ROOT/docs/usage.md"
+if grep -Fq 'links the shared skill store' "$ROOT/docs/usage.md" ||
+  grep -Fq '~/.junie/skills/' "$ROOT/docs/usage.md"; then
+  echo 'public documentation contains obsolete Junie manual skills-link guidance' >&2
+  exit 1
+fi
 for path in "$ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"; do
   [[ -x "$path" ]] || {
     echo "missing executable Antigravity script: $path" >&2
@@ -88,10 +109,22 @@ grep -Fq 'codex-<repo-slug>-<8-hex-path-digest>' "$ROOT/docs/usage.md"
 grep -Fq '.worktrees/' "$ROOT/docs/usage.md"
 
 if grep -Eiq '(/Users/|/Volumes/|/home/|sk-[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{20,})' \
-  "$ROOT/README.md" "$ROOT/docs/usage.md"; then
+  "$ROOT/README.md" "$ROOT/docs/usage.md" "$ROOT/AGENTS.md"; then
   echo 'public documentation contains private path or credential-like value' >&2
   exit 1
 fi
+
+for public_file in "$ROOT/README.md" "$ROOT/docs/usage.md" "$ROOT/AGENTS.md" \
+  "$ROOT/bin/sbx-policy-audit"; do
+  if grep -Fq '0.42.1' "$public_file"; then
+    echo "stale Docker Sandboxes 0.42.1 reference: $public_file" >&2
+    exit 1
+  fi
+  if grep -Eq 'skills_root|SHARED_SKILLS_ROOT|link_shared_skills' "$public_file"; then
+    echo "obsolete manual skills lifecycle reference: $public_file" >&2
+    exit 1
+  fi
+done
 
 for path in \
   '.claude/skills/playwright-cli/SKILL.md' \

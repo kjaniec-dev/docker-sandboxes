@@ -59,31 +59,71 @@ exit 1
 MOCK
 chmod +x "$tmp/bin/playwright-cli"
 
-shared_skills="$tmp/shared-skills"
-for skill in using-superpowers brainstorming caveman playwright-cli; do
-  mkdir -p "$shared_skills/$skill"
-  printf '%s\n' "$skill" >"$shared_skills/$skill/SKILL.md"
-done
+snapshot_discovery_entries() {
+  local directory="$1"
+  snapshot_discovery_tree "$directory" | LC_ALL=C sort
+}
+
+snapshot_discovery_tree() {
+  local directory="$1"
+  local prefix="${2:-}" entry name type
+  local -a entries
+  shopt -s nullglob dotglob
+  entries=("$directory"/*)
+  for entry in "${entries[@]}"; do
+    name="${entry##*/}"
+    if [[ -L "$entry" ]]; then
+      type=symlink
+    elif [[ -d "$entry" ]]; then
+      type=directory
+    elif [[ -f "$entry" ]]; then
+      type=file
+    else
+      type=other
+    fi
+    printf '%s\t%s\n' "$prefix$name" "$type"
+    if [[ "$type" == directory ]]; then
+      snapshot_discovery_tree "$entry" "$prefix$name/"
+    fi
+  done
+}
+
+assert_discovery_snapshot() {
+  local expected="$1" directory="$2" actual
+  actual="$(snapshot_discovery_entries "$directory")"
+  [[ "$actual" == "$expected" ]] || {
+    echo "bootstrap changed the skills discovery directory: $actual" >&2
+    exit 1
+  }
+  [[ "$actual" != *$'\tsymlink'* ]] || {
+    echo 'bootstrap created a skills symlink' >&2
+    exit 1
+  }
+}
+
+skills_dir="$tmp/home/.agents/skills"
+mkdir -p "$skills_dir"
+printf '%s\n' user-owned >"$skills_dir/user-skill.md"
+skills_before_snapshot="$(snapshot_discovery_entries "$skills_dir")"
+skills_before="$(cksum <"$skills_dir/user-skill.md")"
 mkdir -p "$tmp/state"
 
 MOCK_STATE="$tmp/state" MOCK_CODEX_LOG="$tmp/codex.log" \
-  MOCK_FORBIDDEN_LOG="$tmp/forbidden.log" SHARED_SKILLS_ROOT="$shared_skills" \
+  MOCK_FORBIDDEN_LOG="$tmp/forbidden.log" \
   HOME="$tmp/home" PATH="$tmp/bin:$PATH" \
   bash "$ROOT/harnesses/codex/scripts/bootstrap.sh"
+assert_discovery_snapshot "$skills_before_snapshot" "$skills_dir"
 MOCK_STATE="$tmp/state" MOCK_CODEX_LOG="$tmp/codex.log" \
-  MOCK_FORBIDDEN_LOG="$tmp/forbidden.log" SHARED_SKILLS_ROOT="$shared_skills" \
+  MOCK_FORBIDDEN_LOG="$tmp/forbidden.log" \
   HOME="$tmp/home" PATH="$tmp/bin:$PATH" \
   bash "$ROOT/harnesses/codex/scripts/bootstrap.sh"
+assert_discovery_snapshot "$skills_before_snapshot" "$skills_dir"
 grep -Fq 'mcp add serena -- serena start-mcp-server --context=codex --project-from-cwd' \
   "$tmp/codex.log"
 grep -Fq 'mcp add context7 --url https://mcp.context7.com/mcp' "$tmp/codex.log"
 [[ "$(wc -l <"$tmp/codex.log" | tr -d ' ')" == 2 ]]
-skills_link="$tmp/home/.agents/skills"
-[[ -L "$skills_link" ]]
-[[ "$(readlink "$skills_link")" == "$shared_skills" ]]
-for skill in using-superpowers brainstorming caveman playwright-cli; do
-  [[ -f "$skills_link/$skill/SKILL.md" ]]
-done
+[[ -d "$skills_dir" && ! -L "$skills_dir" ]]
+[[ "$(cksum <"$skills_dir/user-skill.md")" == "$skills_before" ]]
 [[ ! -e "$tmp/home/.cache/claude-sbx/codex-bootstrap-v1" ]]
 [[ ! -s "$tmp/forbidden.log" ]]
 

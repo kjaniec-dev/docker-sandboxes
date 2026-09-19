@@ -104,19 +104,16 @@ EOF
 args:
   harness_root:
     required: true
-  skills_root:
-    required: true
 
 environment:
   variables:
     HARNESS_ROOT: ${{ kit.args.harness_root }}
-    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
 
 setup:
   install:
     - command: 'bash "$HARNESS_ROOT/harnesses/@NAME@/scripts/bootstrap.sh"'
       user: "1000"
-      description: Configure integrations and shared skills
+      description: Configure integrations
 
 permissions:
   network:
@@ -192,12 +189,6 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
 fi
 
 : "${HARNESS_ROOT:?HARNESS_ROOT must point to the sandboxes checkout}"
-
-# shellcheck source=../../../shared/skills.sh
-source "$HARNESS_ROOT/shared/skills.sh"
-
-# TODO: link the @DISPLAY@ skills discovery directory to the shared store:
-# link_shared_skills "$HOME/.@PREFIX@/skills"
 
 # TODO: register @DISPLAY@ integrations (MCP servers, plugins) idempotently.
 # Bootstrap runs at sandbox creation and must be safe to run repeatedly.

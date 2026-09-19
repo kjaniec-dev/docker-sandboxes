@@ -5,7 +5,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 export XDG_CACHE_HOME="$tmp/cache"
 export MOCK_STATE="$tmp/sandbox-name"
-export MOCK_STORE="$tmp/shared skills" MOCK_LOG="$tmp/commands.jsonl"
+export MOCK_STORE="$tmp/shared skills" MOCK_LOG="$tmp/commands.jsonl" MOCK_FORBIDDEN_LOG="$tmp/forbidden.log"
+export MOCK_CALL_LOG="$tmp/calls.jsonl"
 source "$ROOT/shared/skills.sh"
 for skill in "${SUPERPOWERS_SKILLS[@]}" caveman playwright-cli; do
   mkdir -p "$MOCK_STORE/$skill"
@@ -16,12 +17,24 @@ mkdir -p "$tmp/bin"
 cat >"$tmp/bin/sbx" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+jq -cn --args '$ARGS.positional' -- "$@" >>"$MOCK_CALL_LOG"
 case "$1 $2" in
   'template ls')
+    printf '%s\n' "$*" >>"$MOCK_FORBIDDEN_LOG"
     [[ "$3" == --json ]]
     jq -cn --arg repo "docker.io/library/$MOCK_AGENT-sbx" \
       '{images:[{repository:$repo,tag:"local",id:"abc",flavor:"shell-docker"}]}' ;;
-  'skills ls') jq -cn --arg store "$MOCK_STORE" '{store:$store,skills:[]}' ;;
+  'skills ls')
+    [[ "$3" == --json ]]
+    if [[ "${MOCK_SKILLS_STATUS:-0}" != 0 ]]; then
+      exit "$MOCK_SKILLS_STATUS"
+    fi
+    if [[ "${MOCK_SKILLS_OUTPUT:-valid}" == invalid ]]; then
+      printf '%s\n' '{"store":'
+    else
+      jq -cn --arg store "$MOCK_STORE" '{store:$store,skills:[]}'
+    fi ;;
+  'skills add') exit 91 ;;
   'ls --json')
     if [[ -s "$MOCK_STATE" ]]; then
       jq -cn --arg name "$(cat "$MOCK_STATE")" '{sandboxes:[{name:$name}]}'
@@ -42,10 +55,16 @@ repo="$tmp/repo with 'quotes\" and spaces"
 git init -q "$repo"
 repo="$(cd -P "$repo" && pwd)"
 printf '.worktrees/\n' >"$repo/.gitignore"
-for agent in claude codex opencode agy junie; do
+for agent in codex opencode agy junie; do
   export MOCK_AGENT="$agent"
+  if [[ "$agent" == agy ]]; then
+    kit="$ROOT/harnesses/antigravity-cli/kit"
+  else
+    kit="$ROOT/harnesses/$agent/kit"
+  fi
   : >"$MOCK_STATE"
   : >"$MOCK_LOG"
+  : >"$MOCK_FORBIDDEN_LOG"
   ln -s "$ROOT/bin/$agent-sbx" "$tmp/bin/$agent-sbx"
   # Initial launch and reuse through a PATH symlink must resolve the same kit.
   for launcher in "$ROOT/bin/$agent-sbx" "$tmp/bin/$agent-sbx"; do
@@ -54,18 +73,20 @@ for agent in claude codex opencode agy junie; do
       "$launcher" --prompt 'hello "world"'
     )
   done
-  jq -se --arg repo "$repo" --arg root "$ROOT" --arg store "$MOCK_STORE" --arg agent "$agent" '
+  jq -se --arg repo "$repo" --arg root "$ROOT" --arg kit "$kit" --arg store "$MOCK_STORE" --arg agent "$agent" '
     def option($flag): . as $a | index($flag) as $i | $a[$i+1];
     def arg($flag; $prefix): . as $a | range(0; length-1) as $i |
       select($a[$i] == $flag and ($a[$i+1] | startswith($prefix + "="))) |
       $a[$i+1] | ltrimstr($prefix + "=") ;
     length == 3 and .[1] == .[2] and
     (.[0] | .[0:2] == ["create","--name"]) and
-    (.[0] | option("--template")) == ($agent + "-sbx:local") and
-    .[0][-3:] == [$repo, ($root + ":ro"), $store] and
-    (.[0][-4] | startswith($root + "/harnesses/")) and
+    (.[0] | index("--template")) == null and
+    (.[0] | .[3:6]) == ["--skills=readonly", "--kit-arg", ("harness_root=" + $root)] and
+    .[0][6] == $kit and
+    .[0][7:] == [$repo, ($root + ":ro")] and
+    (.[0] | index("skills_root")) == null and
+    (.[0] | index($store)) == null and
     (.[0] | arg("--kit-arg";"harness_root")) == $root and
-    (.[0] | arg("--kit-arg";"skills_root")) == $store and
     (.[0] | option("--name")) == .[1][2] and
     (.[1][2] | startswith($agent + "-repo-with-quotes-and-spaces-")) and
      (.[1] as $run | ($run | index("--")) as $separator | $run[($separator + 1):]) ==
@@ -73,10 +94,12 @@ for agent in claude codex opencode agy junie; do
         elif $agent == "opencode" then ["--auto","--prompt","hello \"world\""]
         else ["--prompt","hello \"world\""] end) and
     (if $agent == "junie" then .[1][3:5] == ["--env","JUNIE_API_KEY="] else .[1][3] == "--" end)
-   ' "$MOCK_LOG" >/dev/null
+    ' "$MOCK_LOG" >/dev/null
+  [[ ! -s "$MOCK_FORBIDDEN_LOG" ]]
 
   : >"$MOCK_STATE"
   : >"$MOCK_LOG"
+  : >"$MOCK_FORBIDDEN_LOG"
   (
     cd "$repo"
     "$ROOT/bin/$agent-sbx"
@@ -91,6 +114,7 @@ for agent in claude codex opencode agy junie; do
   : >"$MOCK_STATE"
   # Provision failure must stop before attachment, even with an existing name.
   : >"$MOCK_LOG"
+  : >"$MOCK_FORBIDDEN_LOG"
   status=0
   (
     cd "$repo"
@@ -107,12 +131,29 @@ for agent in claude codex opencode agy junie; do
   [[ "$status" == 3 ]]
 done
 
+# A failed shared-skills lookup must stop before provisioning or attachment.
+export MOCK_AGENT=codex
+: >"$MOCK_CALL_LOG"
+: >"$MOCK_LOG"
+: >"$MOCK_FORBIDDEN_LOG"
+status=0
+(
+  export MOCK_SKILLS_STATUS=17
+  cd "$repo"
+  "$ROOT/bin/codex-sbx" --prompt failed
+) 2>/dev/null || status=$?
+[[ "$status" != 0 ]]
+jq -se 'length == 1 and .[0] == ["skills", "ls", "--json"]' "$MOCK_CALL_LOG" >/dev/null
+[[ ! -s "$MOCK_LOG" ]]
+[[ ! -s "$MOCK_FORBIDDEN_LOG" ]]
+
 for agent_and_flag in 'codex --not-so-yolo' 'opencode --no-auto'; do
   agent="${agent_and_flag%% *}"
   flag="${agent_and_flag#* }"
   export MOCK_AGENT="$agent"
   : >"$MOCK_STATE"
   : >"$MOCK_LOG"
+  : >"$MOCK_FORBIDDEN_LOG"
   (
     cd "$repo"
     "$ROOT/bin/$agent-sbx" "$flag" --prompt override
@@ -126,6 +167,7 @@ done
 export MOCK_AGENT=junie
 : >"$MOCK_STATE"
 : >"$MOCK_LOG"
+: >"$MOCK_FORBIDDEN_LOG"
 (
   cd "$repo"
   JUNIE_API_KEY=test-key "$ROOT/bin/junie-sbx"
@@ -135,9 +177,12 @@ jq -se '.[1][3:5] == ["--env","JUNIE_API_KEY=test-key"] and
 # Harness itself as target: never duplicate its mount.
 : >"$MOCK_STATE"
 : >"$MOCK_LOG"
+: >"$MOCK_FORBIDDEN_LOG"
 (
   cd "$ROOT"
   "$ROOT/bin/junie-sbx"
 )
-jq -se --arg root "$ROOT" --arg store "$MOCK_STORE" '.[0][-2:] == [$root,$store] and (.[0] | index($root + ":ro")) == null' "$MOCK_LOG" >/dev/null
+jq -se --arg root "$ROOT" --arg store "$MOCK_STORE" \
+  '.[0][-1] == $root and (.[0] | index($root + ":ro")) == null and
+   (.[0] | tostring | contains($store) | not)' "$MOCK_LOG" >/dev/null
 echo 'test_native_lifecycle.sh: PASS'

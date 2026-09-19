@@ -55,23 +55,3 @@ ensure_shared_skills() {
     }
   done
 }
-
-link_shared_skills() {
-  local destination="$1"
-  : "${SHARED_SKILLS_ROOT:?The sandbox environment must mount the shared skills store}"
-  [[ -f "$SHARED_SKILLS_ROOT/using-superpowers/SKILL.md" &&
-    -f "$SHARED_SKILLS_ROOT/caveman/SKILL.md" &&
-    -f "$SHARED_SKILLS_ROOT/playwright-cli/SKILL.md" ]] || {
-    echo 'Shared skills mount is incomplete; run sbx-skills on the host.' >&2
-    return 1
-  }
-  mkdir -p "$(dirname "$destination")"
-  if [[ -d "$destination" && ! -L "$destination" ]]; then
-    # Fresh templates may create an empty discovery directory.
-    rmdir "$destination" || {
-      echo "Nonempty skills directory: $destination. Recreate this sandbox for the shared-skills migration." >&2
-      return 1
-    }
-  fi
-  ln -sfn "$SHARED_SKILLS_ROOT" "$destination"
-}

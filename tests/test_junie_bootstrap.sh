@@ -48,27 +48,66 @@ for command_name in curl git playwright-cli; do
   ln -s junie "$tmp/bin/$command_name"
 done
 
-shared_skills="$tmp/shared-skills"
-for skill in using-superpowers brainstorming caveman playwright-cli; do
-  mkdir -p "$shared_skills/$skill"
-  printf '%s\n' "$skill" >"$shared_skills/$skill/SKILL.md"
-done
+snapshot_discovery_entries() {
+  local directory="$1"
+  snapshot_discovery_tree "$directory" | LC_ALL=C sort
+}
+
+snapshot_discovery_tree() {
+  local directory="$1"
+  local prefix="${2:-}" entry name type
+  local -a entries
+  shopt -s nullglob dotglob
+  entries=("$directory"/*)
+  for entry in "${entries[@]}"; do
+    name="${entry##*/}"
+    if [[ -L "$entry" ]]; then
+      type=symlink
+    elif [[ -d "$entry" ]]; then
+      type=directory
+    elif [[ -f "$entry" ]]; then
+      type=file
+    else
+      type=other
+    fi
+    printf '%s\t%s\n' "$prefix$name" "$type"
+    if [[ "$type" == directory ]]; then
+      snapshot_discovery_tree "$entry" "$prefix$name/"
+    fi
+  done
+}
+
+assert_discovery_snapshot() {
+  local expected="$1" directory="$2" actual
+  actual="$(snapshot_discovery_entries "$directory")"
+  [[ "$actual" == "$expected" ]] || {
+    echo "bootstrap changed the skills discovery directory: $actual" >&2
+    exit 1
+  }
+  [[ "$actual" != *$'\tsymlink'* ]] || {
+    echo 'bootstrap created a skills symlink' >&2
+    exit 1
+  }
+}
 
 bootstrap_home="$tmp/bootstrap-home"
 mkdir -p "$bootstrap_home"
+skills_dir="$bootstrap_home/.junie/skills"
+mkdir -p "$skills_dir"
+printf '%s\n' user-owned >"$skills_dir/user-skill.md"
+skills_before_snapshot="$(snapshot_discovery_entries "$skills_dir")"
+skills_before="$(cksum <"$skills_dir/user-skill.md")"
 bootstrap_output="$tmp/bootstrap-output.log"
-HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" SHARED_SKILLS_ROOT="$shared_skills" \
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" \
   bash "$ROOT/harnesses/junie/scripts/bootstrap.sh" >"$bootstrap_output"
-HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" SHARED_SKILLS_ROOT="$shared_skills" \
+assert_discovery_snapshot "$skills_before_snapshot" "$skills_dir"
+HOME="$bootstrap_home" PATH="$tmp/bin:$PATH" \
   bash "$ROOT/harnesses/junie/scripts/bootstrap.sh" >>"$bootstrap_output"
+assert_discovery_snapshot "$skills_before_snapshot" "$skills_dir"
 
 grep -Fxq 'Junie bootstrap setup complete.' "$bootstrap_output"
-skills_link="$bootstrap_home/.junie/skills"
-[[ -L "$skills_link" ]]
-[[ "$(readlink "$skills_link")" == "$shared_skills" ]]
-for skill in using-superpowers brainstorming caveman playwright-cli; do
-  [[ -f "$skills_link/$skill/SKILL.md" ]]
-done
+[[ -d "$skills_dir" && ! -L "$skills_dir" ]]
+[[ "$(cksum <"$skills_dir/user-skill.md")" == "$skills_before" ]]
 jq -e '
   .mcpServers.serena.command == "serena" and
   .mcpServers.context7.url == "https://mcp.context7.com/mcp"
