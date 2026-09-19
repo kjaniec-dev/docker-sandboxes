@@ -10,5 +10,9 @@ COPY shared/install-system-toolchain.sh /tmp/install-system-toolchain.sh
 RUN NODE_VERSION="$NODE_VERSION" GO_VERSION="$GO_VERSION" bash /tmp/install-system-toolchain.sh
 
 COPY shared/install-user-toolchain.sh /tmp/install-user-toolchain.sh
+COPY harnesses/claude-code/scripts/bootstrap.sh /usr/local/lib/claude-sbx/bootstrap.sh
+RUN chmod 0755 /usr/local/lib/claude-sbx/bootstrap.sh && \
+    chown agent:agent /usr/local/lib/claude-sbx/bootstrap.sh
+
 USER agent
 RUN bash /tmp/install-user-toolchain.sh

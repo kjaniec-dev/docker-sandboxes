@@ -8,19 +8,16 @@ description: Development defaults for Antigravity CLI in Docker Sandboxes
 args:
   harness_root:
     required: true
-  skills_root:
-    required: true
 
 environment:
   variables:
     HARNESS_ROOT: ${{ kit.args.harness_root }}
-    SHARED_SKILLS_ROOT: ${{ kit.args.skills_root }}
 
 setup:
   install:
     - command: 'bash "$HARNESS_ROOT/harnesses/antigravity-cli/scripts/bootstrap.sh"'
       user: "1000"
-      description: Configure integrations and shared skills
+      description: Configure integrations
 
 sandbox:
   image: agy-sbx:local

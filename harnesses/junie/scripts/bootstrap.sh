@@ -140,14 +140,6 @@ fi
 
 install_junie
 
-if [[ -z "${HARNESS_ROOT:-}" ]]; then
-  HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-fi
-# shellcheck source=/dev/null
-source "$HARNESS_ROOT/shared/skills.sh"
-
-link_shared_skills "$HOME/.junie/skills"
-
 ensure_junie_config "$HOME/.junie/config.json"
 ensure_junie_mcp_config "$HOME/.junie/mcp/mcp.json"
 

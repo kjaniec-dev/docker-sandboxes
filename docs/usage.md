@@ -3,7 +3,7 @@
 ## Requirements
 
 - macOS
-- Docker Sandboxes (`sbx`), minimum version 0.42.1
+- Docker Sandboxes (`sbx`), minimum version 0.43.0
 - Docker Desktop / Docker Engine for building the custom images
 - Git and jq on the host (`brew install jq`)
 
@@ -20,25 +20,41 @@ docker version
 `sbx` is a standalone installation. The host Docker daemon is needed for our
 image builds; sandbox execution uses the Docker Sandboxes runtime.
 
-## Docker Sandboxes 0.42.1
+## Docker Sandboxes 0.43.0
 
-Version 0.42.1 fixes proxy framing of HTTP/2 responses without bodies. Most
-new configuration features arrived in 0.42.0; see the official
-[release notes](https://docs.docker.com/ai/sandboxes/release-notes/).
+Docker Sandboxes 0.43.0 is the minimum supported runtime. See the official
+[release notes](https://docs.docker.com/ai/sandboxes/release-notes/) for the
+complete change list.
 
-The five harnesses share their launcher lifecycle and image rebuild code in
+The five harnesses share launcher and image-rebuild code in
 `shared/launcher.sh` and `shared/rebuild.sh`. Agent-specific commands,
 authentication, bootstrap scripts, and kits remain under each harness.
 Launcher-only updates apply to existing sandboxes on the next invocation.
 
-Kits are now `kind: sandbox`. Claude, Codex and OpenCode inherit their native
-agent defaults; Antigravity and Junie declare their own entrypoints. The shared
-launcher checks `sbx ls --json` and invokes `sbx create` only for a missing
-instance, with the kit, template and workspace
-mounts directly, then `sbx run --name` to forward agent arguments. There are no
-generated environment files or argument interpolation. Agent bootstrap runs
-synchronously as user 1000 via the kit's `setup.install`, before attachment.
-Junie API keys are supplied only to the second, session attachment command.
+Kits are `kind: sandbox`. Claude, Codex and OpenCode inherit their native agent
+defaults and declare their custom images; Antigravity and Junie declare their
+own entrypoints. Direct non-Claude launchers pass the kit and workspace to
+`sbx create --name`, request native `--skills=readonly`, and then attach with
+`sbx run --name`. Claude instead applies the user-level `~/.sbxenv.yaml` with
+`sbx env create --auto-approve --name` and attaches with `sbx run --name`.
+Neither path generates an environment file. Agent bootstrap runs synchronously
+as user 1000 via the kit's `setup.install`, before attachment. Junie API keys
+are supplied only to the second, session attachment command.
+
+### 0.43 changes
+
+- Native `skills` access supports `off`, `readonly`, and `readwrite`; these
+  harnesses explicitly use read-only access instead of manually mounting or
+  symlinking a host skills directory.
+- `sbx env` supports `${{ env.projectDir }}`, and every environment command
+  accepts `--name`. Claude's wrapper forwards arguments such as `--model` after
+  the `sbx run --name ... --` separator without rewriting them.
+- `sbx inspect <sandbox-name>` and `sbx daemon inspect` show mount information;
+  use them to check the direct workspace and native skills mounts.
+- Signed git kits are materialized from commit blobs and cached checkouts are
+  verified against their manifests. Git configuration injection is hardened,
+  and SBX warns when a stored credential has no binding authorizing it for a
+  sandbox.
 
 On first creation, sbx asks which credentials the custom v2 kit may use.
 For Codex with an existing ChatGPT login, skip the API-key option and approve
@@ -46,10 +62,11 @@ OpenAI OAuth. A stored login alone is insufficient: the kit also needs this
 binding. Non-interactive creation cannot ask and may start without usable
 credentials. See [Docker credential bindings](https://docs.docker.com/ai/sandboxes/configuration/credentials/).
 
-The build context includes only the two shared toolchain installers. Installers
-clean Go, uv and npm build/download caches in the same image layer, retaining
-installed tools and Playwright browsers. Rebuild templates to apply this size
-reduction; existing images and sandboxes are unaffected.
+The custom images copy the shared toolchain installers; the Claude image also
+copies its plugin bootstrap into the image. Installers clean Go, uv and npm
+build/download caches in the same image layer, retaining installed tools and
+Playwright browsers. Rebuild templates to apply this size reduction; existing
+images and sandboxes are unaffected.
 
 Chromium is installed as `agent`, in that user's browser cache, using the
 Playwright version bundled with the global CLI. Only system dependencies are
@@ -72,13 +89,15 @@ Or from the host:
 sbx exec <sandbox-name> bash /path/to/sandboxes/shared/verify-browser.sh
 ```
 
-`sandbox.build` and author-time `mixins:` composition are not implemented by
-the 0.42.1 runtime, so custom images still use the rebuild commands below.
+Custom images still use the rebuild commands below; the tracked kits declare
+their image and setup behavior for native `sbx create`.
 
 Recreate old sandboxes once for this migration: inspect names with `sbx ls`,
 remove a selected old instance with `sbx rm <sandbox-name>`, then run its
 launcher again. This loses sandbox sessions/configuration but leaves mounted
-repository files intact. No image rebuild is needed just for this migration.
+repository files intact. Rebuild the Claude template if its image predates this
+migration so the baked plugin bootstrap is present; unchanged toolchain images
+for the other harnesses can be reused.
 Environment/kit changes are creation-time settings, not patches to an existing
 instance. There are no bootstrap markers or automatic bootstrap retries on
 reattach; after a failed first bootstrap, correct the cause and recreate, or
@@ -88,8 +107,8 @@ run the idempotent bootstrap explicitly with `sbx exec`.
 
 The first launcher run installs Superpowers and Playwright CLI through
 `sbx skills add`. Caveman v2.2.0 is checked against commit
-`9aa63945a349bef17206540650db48c30fafbdf2` and copied into the same store, because
-native `skills add` cannot pin Git revisions in 0.42.1. Source checkouts and
+`9aa63945a349bef17206540650db48c30fafbdf2` and copied into the same store,
+because the native command cannot pin that Git revision. Source checkouts and
 backups stay in the host cache, outside the skills store.
 
 ```bash
@@ -98,16 +117,16 @@ backups stay in the host cache, outside the skills store.
 sbx skills ls --json     # includes the native store's actual host path
 ```
 
-All five kits explicitly mount that store read/write and link their discovery
-directory to it: Claude `~/.claude/skills`, Codex `~/.agents/skills`, OpenCode
-`~/.config/opencode/skills`, Antigravity `~/.gemini/config/skills`, and Junie
-`~/.junie/skills`. Native automatic skill mounting is disabled to avoid duplicate
-mounts and to give custom agents the same layout. A skill change affects every
-sandbox; reload/restart the agent if it caches skills. Claude plugins remain
-installed separately because they provide hooks and integrations beyond skills.
-Use `sbx-skills --update`, not a blanket native update, to retain the Caveman pin.
+The direct launchers pass `--skills=readonly`, and Claude's environment file
+declares `skills: readonly`. SBX supplies each agent's native discovery path;
+the kits and bootstraps do not manually mount or symlink the host store. A
+skill change affects every newly created sandbox; remove and recreate a sandbox
+after changing its kit or skills settings, and reload/restart the agent if it
+caches skills. Claude plugins remain installed separately because they provide
+hooks and integrations beyond skills. Use `sbx-skills --update`, not a blanket
+native update, to retain the Caveman pin.
 
-### Other 0.42.1 behavior
+### Other 0.43.0 behavior
 
 Published ports now default to IPv4. Use `--publish 3000:3000/tcp` explicitly
 for IPv4 and IPv6. New sandbox Docker volumes default to 10 GB; set
@@ -155,6 +174,41 @@ ln -sfn "$PWD/bin/junie-sbx-rebuild" "$HOME/.local/bin/junie-sbx-rebuild"
 grep -q 'HOME/.local/bin' "$HOME/.zshrc" || \
   printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$HOME/.zshrc"
 source "$HOME/.zshrc"
+```
+
+## Claude environment file
+
+Claude uses the global user environment file supported by SBX 0.43. Create
+`~/.sbxenv.yaml` outside any mounted repository before the first `claude-sbx`
+launch:
+
+```yaml
+schemaVersion: "1"
+agent: /absolute/path/to/claude-sbx/harnesses/claude-code/kit
+workspace: ${{ env.projectDir }}
+skills: readonly
+```
+
+Replace the explicit `/absolute/path/to/claude-sbx` placeholder with the
+absolute path to your harness checkout. The `agent` value is user-local; the
+file itself is not part of this repository or the target repository and must
+never be committed. `claude-sbx` does not create or rewrite this file. It uses
+`sbx env create --auto-approve --name <deterministic-name>` and then
+`sbx run --name <deterministic-name> -- ...`, so arguments such as
+`--model sonnet` are forwarded unchanged.
+
+The kit and native skills settings are applied when the sandbox is created. If
+either changes, remove the affected sandbox with `sbx rm <sandbox-name>` and
+run `claude-sbx` again.
+
+## Migrate MCP OAuth secrets
+
+SBX 0.43.0 no longer reads the old `mcp:<server>.client_secret` name. Re-set
+each secret under the new name; do not inspect or migrate the secret value in
+this repository:
+
+```bash
+sbx secret set mcp:<server>:client_secret
 ```
 
 ## First start: Codex
@@ -304,13 +358,15 @@ junie-sbx
 unset JUNIE_API_KEY
 ```
 
-Junie bootstrap enables Brave mode in `~/.junie/config.json`, registers Serena
-and Context7 in `~/.junie/mcp/mcp.json`, and links the shared skill store at
-`~/.junie/skills/`. This disables approval prompts, including for terminal
-commands, file access, and MCP tools. The target repository is mounted
-read/write, so use this only when you explicitly want unattended changes; the
-bootstrap intentionally restores Brave mode on each run. Do not put Junie
-credentials, MCP configuration, or session state in the image or repository.
+Junie bootstrap enables Brave mode in `~/.junie/config.json` and registers
+Serena and Context7 in `~/.junie/mcp/mcp.json`. SBX's native
+`--skills=readonly` mode supplies Junie's skills discovery directory; the
+bootstrap does not link or populate a host skills store. This disables approval
+prompts, including for terminal commands, file access, and MCP tools. The target
+repository is mounted read/write, so use this only when you explicitly want
+unattended changes; the bootstrap intentionally restores Brave mode on each run.
+Do not put Junie credentials, MCP configuration, or session state in the image
+or repository.
 
 ## Start a harness
 
@@ -356,10 +412,12 @@ junie-sbx
 
 All harnesses use direct workspace mode: the target repository is mounted
 read/write at its original absolute path. They intentionally do not use
-`--clone`. When the target differs from this repository, the harness source is
-also mounted read-only for bootstrap and verification. The `.worktrees/` guard
-is unchanged and exits before sandbox creation when the directory is not
-ignored by Git.
+`--clone`. For the direct non-Claude launchers, when the target differs from
+this repository, the harness source is also mounted read-only for bootstrap and
+verification. Claude's bootstrap is baked into its image, so its environment
+does not mount this harness checkout. The `.worktrees/` guard is unchanged and
+exits before sandbox creation when the directory is not ignored by Git. Use
+`sbx inspect <sandbox-name>` to inspect the resulting mounts.
 
 Sandbox names are deterministic but separate:
 
@@ -371,9 +429,10 @@ Sandbox names are deterministic but separate:
 | Antigravity CLI | `agy-<repo-slug>-<8-hex-path-digest>` | `agy-sbx:local` |
 | Junie | `junie-<repo-slug>-<8-hex-path-digest>` | `junie-sbx:local` |
 
-Running a command again reattaches to that harness's sandbox. Claude, Codex,
-OpenCode, Antigravity, and Junie never share an agent-managed configuration
-directory or sandbox identity.
+Running a command again reuses that harness's deterministic sandbox. Claude
+reapplies its named environment before attachment; Codex, OpenCode, Antigravity,
+and Junie reuse their native kit configuration. The five harnesses never share
+an agent-managed configuration directory or sandbox identity.
 
 ## Authentication
 
@@ -420,13 +479,18 @@ worktree outside the mounted repository and use it as the only workspace.
 ## Verify a sandbox
 
 From the target repository, source the matching wrapper to calculate its
-deterministic name, then run the matching verification script. For Claude:
+deterministic name, then run the matching verification script for a direct
+launcher. Claude's environment intentionally does not mount the harness
+checkout; use `sbx inspect <sandbox-name>` for its workspace/native-skills
+mounts, and run its verification script when the mounted target is this
+checkout:
 
 ```bash
 source /path/to/claude-sbx/bin/claude-sbx
 repo_root="$(git rev-parse --show-toplevel)"
 name="$(sandbox_name_for_repo "$repo_root")"
-sbx exec "$name" bash /path/to/claude-sbx/harnesses/claude-code/scripts/verify.sh
+sbx inspect "$name"
+sbx exec "$name" bash harnesses/claude-code/scripts/verify.sh
 ```
 
 For Codex:
@@ -467,11 +531,11 @@ sbx exec "$name" bash /path/to/claude-sbx/harnesses/junie/scripts/verify.sh
 
 Each verification checks its agent CLI plus the shared toolchain, pinned
 Node/Go versions, Serena, Playwright CLI, OpenJDK 25, Maven, Gradle, and Docker
-Compose. Bootstraps preserve Serena/Context7 MCP registration and link each
-agent's discovery directory to the shared skills store. Verification checks
-that the actual shared SKILL.md files are readable, not the old per-agent Git
-checkout layout. Kits instruct agents to use `playwright-cli` for browser and
-frontend validation.
+Compose. Bootstraps preserve Serena/Context7 MCP registration. SBX's native
+read-only skills mode supplies the actual shared `SKILL.md` files at each
+agent's discovery path, and verification checks those files rather than the
+old per-agent Git checkout layout. Kits instruct agents to use `playwright-cli`
+for browser and frontend validation.
 
 ## Ports
 
@@ -495,8 +559,10 @@ Dockerfile or shared toolchain script:
 3. Run the matching harness command again from the target repository.
 
 Kit changes require recreation to apply the complete updated kit, but do not
-require rebuilding the image. For an additive network permission, use the
-scoped policy command below to update an existing sandbox immediately.
+require rebuilding the image. Native skills settings and Claude environment
+changes likewise require removing and recreating the affected sandbox. For an
+additive network permission, use the scoped policy command below to update an
+existing sandbox immediately.
 
 ## Add a future harness
 
