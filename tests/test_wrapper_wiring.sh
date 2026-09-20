@@ -122,7 +122,7 @@ jq -se --arg name "$codex_name" --arg root "$ROOT" --arg repo "$repo" \
   map(select(.[0:2] == ["run", "--name"])) as $run |
   ([.[] | select((.[0:2] == ["create", "--name"]) or (.[0:2] == ["run", "--name"]))]) == ($create + $run) and
   $create == [["create", "--name", $name, "--skills=readonly", "--kit-arg", ("harness_root=" + $root), $kit, $repo, ($root + ":ro")]] and
-  $run == [["run", "--name", $name, "--", "--approve-for-me", "--prompt", "hello \"world\""]] and
+  $run == [["run", "--name", $name, "--", "--prompt", "hello \"world\""]] and
   (map(select(.[0:2] == ["template", "ls"])) | length) == 0 and
   all(.[]; (tostring | contains($store) | not))
 ' "$MOCK_LOG" >/dev/null
