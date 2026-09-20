@@ -90,8 +90,7 @@ for agent in codex opencode agy junie; do
     (.[0] | option("--name")) == .[1][2] and
     (.[1][2] | startswith($agent + "-repo-with-quotes-and-spaces-")) and
      (.[1] as $run | ($run | index("--")) as $separator | $run[($separator + 1):]) ==
-       (if $agent == "codex" then ["--approve-for-me","--prompt","hello \"world\""]
-        elif $agent == "opencode" then ["--auto","--prompt","hello \"world\""]
+       (if $agent == "opencode" then ["--auto","--prompt","hello \"world\""]
         else ["--prompt","hello \"world\""] end) and
     (if $agent == "junie" then .[1][3:5] == ["--env","JUNIE_API_KEY="] else .[1][3] == "--" end)
     ' "$MOCK_LOG" >/dev/null
@@ -106,8 +105,7 @@ for agent in codex opencode agy junie; do
   )
   jq -se --arg agent "$agent" '
     (.[1] as $run | ($run | index("--")) as $separator | $run[($separator + 1):]) ==
-      (if $agent == "codex" then ["--approve-for-me"]
-       elif $agent == "opencode" then ["--auto"]
+      (if $agent == "opencode" then ["--auto"]
        else [] end)
   ' "$MOCK_LOG" >/dev/null
 
@@ -147,7 +145,10 @@ jq -se 'length == 1 and .[0] == ["skills", "ls", "--json"]' "$MOCK_CALL_LOG" >/d
 [[ ! -s "$MOCK_LOG" ]]
 [[ ! -s "$MOCK_FORBIDDEN_LOG" ]]
 
-for agent_and_flag in 'codex --not-so-yolo' 'opencode --no-auto'; do
+for agent_and_flag in \
+  'codex --not-so-yolo' \
+  'codex --dangerously-bypass-approvals-and-sandbox' \
+  'opencode --no-auto'; do
   agent="${agent_and_flag%% *}"
   flag="${agent_and_flag#* }"
   export MOCK_AGENT="$agent"
