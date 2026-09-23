@@ -32,6 +32,7 @@ permissions:
       - raw.githubusercontent.com
       - objects.githubusercontent.com
       - codeload.github.com
+      - docs.docker.com
       - registry.npmjs.org
       - nodejs.org
       - go.dev
