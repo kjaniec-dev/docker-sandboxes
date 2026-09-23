@@ -25,6 +25,16 @@ ensure_worktrees_ignored() {
   git -C "$repo_root" check-ignore -q "$probe"
 }
 
+append_harness_source_mounts() {
+  local repo_root="$1"
+
+  if [[ "$repo_root" == "$ROOT/.worktrees/"* ]]; then
+    mounts+=("$ROOT/harnesses:ro" "$ROOT/shared:ro")
+  elif [[ "$repo_root" != "$ROOT" ]]; then
+    mounts+=("$ROOT:ro")
+  fi
+}
+
 main() {
   command -v sbx >/dev/null 2>&1 || {
     echo "$SANDBOX_PREFIX-sbx: 'sbx' not found. Install Docker Sandboxes 0.43.0 or newer." >&2
@@ -56,7 +66,7 @@ main() {
   store="$(shared_skills_store)" || return
   ensure_shared_skills "$store" || return
   mounts=("$repo_root")
-  [[ "$repo_root" == "$ROOT" ]] || mounts+=("$ROOT:ro")
+  append_harness_source_mounts "$repo_root"
   # Reattachment must not pass workspaces again (sbx rejects them on reuse).
   sandboxes="$(sbx ls --json)" || return
   if ! jq -e --arg name "$name" 'any(.sandboxes[]; .name == $name)' <<<"$sandboxes" >/dev/null; then

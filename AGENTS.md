@@ -45,9 +45,11 @@ the skills store.
 Mount model: the target repository is mounted read/write at the same absolute
 path inside its sandbox. For direct non-Claude harnesses, when the target differs
 from this repository, this harness repository is mounted read-only so bootstrap
-and verification scripts remain available. Claude's bootstrap is baked into its
-image, so its environment does not mount this harness repository. Native skills
-access is managed by SBX rather than an explicit host-path mount.
+and verification scripts remain available. If target is under this repository's
+`.worktrees/`, only `harnesses/` and `shared/` are mounted read-only to avoid
+overlapping mounts. Claude's bootstrap is baked into its image, so its environment
+does not mount this harness repository. Native skills access is managed by SBX
+rather than an explicit host-path mount.
 
 ## Commands
 

@@ -414,9 +414,11 @@ All harnesses use direct workspace mode: the target repository is mounted
 read/write at its original absolute path. They intentionally do not use
 `--clone`. For the direct non-Claude launchers, when the target differs from
 this repository, the harness source is also mounted read-only for bootstrap and
-verification. Claude's bootstrap is baked into its image, so its environment
-does not mount this harness checkout. The `.worktrees/` guard is unchanged and
-exits before sandbox creation when the directory is not ignored by Git. Use
+verification. If the target is under this repository's `.worktrees/`, only
+`harnesses/` and `shared/` are mounted read-only to avoid overlapping mounts.
+Claude's bootstrap is baked into its image, so its environment does not mount
+this harness checkout. The `.worktrees/` guard is unchanged and exits before
+sandbox creation when the directory is not ignored by Git. Use
 `sbx inspect <sandbox-name>` to inspect the resulting mounts.
 
 Sandbox names are deterministic but separate:
