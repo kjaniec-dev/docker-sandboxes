@@ -8,6 +8,10 @@ for harness in claude-code codex opencode antigravity-cli junie; do
     echo "obsolete manual skills contract in $spec" >&2
     exit 1
   fi
+  if ! grep -Eq '^[[:space:]]+- docs\.docker\.com$' "$spec"; then
+    echo "missing Docker Docs network allowlist entry in $spec" >&2
+    exit 1
+  fi
 done
 
 # Optional native contract test: host can supply the actual minimum CLI.
