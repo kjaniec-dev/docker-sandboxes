@@ -186,6 +186,21 @@ identifier, not a local v2 kit path, and skills access belongs under
 `sandboxOptions.skills`, not at the file root. See Docker's
 [environment-file reference](https://docs.docker.com/ai/sandboxes/configuration/environment-files/).
 
+If you use `sbx env` separately and want user-level defaults, an optional
+`~/.sbxenv.yaml` could look like this:
+
+```yaml
+schemaVersion: "1"
+agent: claude
+workspace: ${{ env.projectDir }}
+sandboxOptions:
+  skills: readonly
+```
+
+This selects the built-in Claude agent for generic `sbx env` commands. It does
+not select this repository's local v2 kit; `claude-sbx` passes that kit directly
+to `sbx create` and does not read the file.
+
 The kit and native skills settings are applied when the sandbox is created. If
 either changes, remove the affected sandbox with `sbx rm <sandbox-name>` and
 run `claude-sbx` again.
