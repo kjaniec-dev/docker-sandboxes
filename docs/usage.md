@@ -33,13 +33,12 @@ Launcher-only updates apply to existing sandboxes on the next invocation.
 
 Kits are `kind: sandbox`. Claude, Codex and OpenCode inherit their native agent
 defaults and declare their custom images; Antigravity and Junie declare their
-own entrypoints. Direct non-Claude launchers pass the kit and workspace to
+own entrypoints. All launchers pass the kit and workspace to
 `sbx create --name`, request native `--skills=readonly`, and then attach with
-`sbx run --name`. Claude instead applies the user-level `~/.sbxenv.yaml` with
-`sbx env create --auto-approve --name` and attaches with `sbx run --name`.
-Neither path generates an environment file. Agent bootstrap runs synchronously
-as user 1000 via the kit's `setup.install`, before attachment. Junie API keys
-are supplied only to the second, session attachment command.
+`sbx run --name`. Claude passes its local v2 kit directly to `sbx create`.
+Launchers do not generate or require environment files. Agent bootstrap runs
+synchronously as user 1000 via the kit's `setup.install`, before attachment.
+Junie API keys are supplied only to the second, session attachment command.
 
 ### 0.43 changes
 
@@ -47,8 +46,8 @@ are supplied only to the second, session attachment command.
   harnesses explicitly use read-only access instead of manually mounting or
   symlinking a host skills directory.
 - `sbx env` supports `${{ env.projectDir }}`, and every environment command
-  accepts `--name`. Claude's wrapper forwards arguments such as `--model` after
-  the `sbx run --name ... --` separator without rewriting them.
+  accepts `--name`. The launchers forward agent arguments after the
+  `sbx run --name ... --` separator without rewriting them.
 - `sbx inspect <sandbox-name>` and `sbx daemon inspect` show mount information;
   use them to check the direct workspace and native skills mounts.
 - Signed git kits are materialized from commit blobs and cached checkouts are
@@ -117,14 +116,13 @@ backups stay in the host cache, outside the skills store.
 sbx skills ls --json     # includes the native store's actual host path
 ```
 
-The direct launchers pass `--skills=readonly`, and Claude's environment file
-declares `skills: readonly`. SBX supplies each agent's native discovery path;
-the kits and bootstraps do not manually mount or symlink the host store. A
-skill change affects every newly created sandbox; remove and recreate a sandbox
-after changing its kit or skills settings, and reload/restart the agent if it
-caches skills. Claude plugins remain installed separately because they provide
-hooks and integrations beyond skills. Use `sbx-skills --update`, not a blanket
-native update, to retain the Caveman pin.
+All launchers pass `--skills=readonly`. SBX supplies each agent's native
+discovery path; the kits and bootstraps do not manually mount or symlink the
+host store. A skill change affects every newly created sandbox; remove and
+recreate a sandbox after changing its kit or skills settings, and reload/restart
+the agent if it caches skills. Claude plugins remain installed separately
+because they provide hooks and integrations beyond skills. Use
+`sbx-skills --update`, not a blanket native update, to retain the Caveman pin.
 
 ### Other 0.43.0 behavior
 
@@ -176,26 +174,17 @@ grep -q 'HOME/.local/bin' "$HOME/.zshrc" || \
 source "$HOME/.zshrc"
 ```
 
-## Claude environment file
+## Claude local kit
 
-Claude uses the global user environment file supported by SBX 0.43. Create
-`~/.sbxenv.yaml` outside any mounted repository before the first `claude-sbx`
-launch:
+`claude-sbx` creates a sandbox directly from
+`harnesses/claude-code/kit/` with the target repository as its workspace and
+native read-only skills access. It then attaches with `sbx run --name`,
+forwarding Claude arguments unchanged. No `~/.sbxenv.yaml` file is needed.
 
-```yaml
-schemaVersion: "1"
-agent: /absolute/path/to/claude-sbx/harnesses/claude-code/kit
-workspace: ${{ env.projectDir }}
-skills: readonly
-```
-
-Replace the explicit `/absolute/path/to/claude-sbx` placeholder with the
-absolute path to your harness checkout. The `agent` value is user-local; the
-file itself is not part of this repository or the target repository and must
-never be committed. `claude-sbx` does not create or rewrite this file. It uses
-`sbx env create --auto-approve --name <deterministic-name>` and then
-`sbx run --name <deterministic-name> -- ...`, so arguments such as
-`--model sonnet` are forwarded unchanged.
+`sbx env` is a separate workflow: its `agent` value is resolved as an agent
+identifier, not a local v2 kit path, and skills access belongs under
+`sandboxOptions.skills`, not at the file root. See Docker's
+[environment-file reference](https://docs.docker.com/ai/sandboxes/configuration/environment-files/).
 
 The kit and native skills settings are applied when the sandbox is created. If
 either changes, remove the affected sandbox with `sbx rm <sandbox-name>` and

@@ -16,11 +16,10 @@ scripts.
 ## Quick start
 
 Requires Docker Sandboxes 0.43.0 or newer, Git and jq on the host, plus Docker
-to build the custom images. Full sandbox kits configure each agent. Direct
-harnesses use `sbx create` and `sbx run --name`; Claude uses the user-level
-`~/.sbxenv.yaml` with `sbx env create --name` and then `sbx run --name`. No
-launcher generates or rewrites an environment file. The public launcher
-commands stay the same.
+to build the custom images. Full sandbox kits configure each agent. All
+launchers use `sbx create` and `sbx run --name`; Claude passes its local v2 kit
+directly to `sbx create`. No launcher generates or requires an environment
+file. The public launcher commands stay the same.
 
 Build the templates from this repository:
 
@@ -49,8 +48,8 @@ After upgrading to SBX 0.43.0, remove each existing sandbox once with
 `sbx rm <sandbox-name>` and launch it again so the new kit and native skills
 settings apply. This discards its sessions and sandbox-local configuration, not
 the mounted repository. Existing toolchain images can be reused unless the
-image or shared toolchain changed. Claude also requires the user-level
-`~/.sbxenv.yaml` described in [the usage guide](docs/usage.md).
+image or shared toolchain changed. Claude's launcher uses its local v2 kit just
+like the other harnesses; no user-level `~/.sbxenv.yaml` setup is required.
 
 SBX 0.43.0 no longer reads MCP OAuth client secrets named
 `mcp:<server>.client_secret`. Re-set each one without inspecting or migrating

@@ -11,7 +11,10 @@ done
 
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# Used by the sourced shared/rebuild.sh entrypoint.
+# shellcheck disable=SC2034
 TEMPLATE="claude-sbx:local"
+KIT="$ROOT/harnesses/claude-code/kit"
 
 SANDBOX_PREFIX="claude"
 # shellcheck source=shared/launcher.sh
@@ -19,7 +22,7 @@ source "$ROOT/shared/launcher.sh"
 # shellcheck source=shared/skills.sh
 source "$ROOT/shared/skills.sh"
 
-claude_env_main() {
+claude_main() {
   command -v sbx >/dev/null 2>&1 || {
     echo "$SANDBOX_PREFIX-sbx: 'sbx' not found. Install Docker Sandboxes 0.43.0 or newer." >&2
     return 1
@@ -30,7 +33,7 @@ claude_env_main() {
     return 1
   }
 
-  local repo_root name env_file store
+  local repo_root name sandboxes store
   if ! repo_root="$(repo_root_from_cwd 2>/dev/null)"; then
     echo "$SANDBOX_PREFIX-sbx: run this command from inside a Git repository" >&2
     return 2
@@ -42,20 +45,21 @@ claude_env_main() {
     return 3
   fi
 
-  # Apply the user-owned environment only; never create or rewrite it here.
   store="$(shared_skills_store)" || return
   ensure_shared_skills "$store" || return
   name="$(sandbox_name_for_repo "$repo_root")"
-  env_file="${HOME:-}/.sbxenv.yaml"
-  if [[ ! -f "$env_file" ]]; then
-    printf '%s-sbx: %s was not found. Create this user-level environment file before running Claude.\n' \
-      "$SANDBOX_PREFIX" "$env_file" >&2
-    return 1
+  sandboxes="$(sbx ls --json)" || return
+
+  if ! jq -e --arg name "$name" 'any(.sandboxes[]; .name == $name)' \
+    <<<"$sandboxes" >/dev/null; then
+    (
+      cd "$repo_root" || exit
+      sbx create --name "$name" --skills=readonly "$KIT" "$repo_root"
+    ) || return
   fi
 
   (
     cd "$repo_root" || exit
-    sbx env create --auto-approve --name "$name" || exit
     if (($# > 0)); then
       sbx run --name "$name" -- "$@"
     else
@@ -65,5 +69,5 @@ claude_env_main() {
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  claude_env_main "$@"
+  claude_main "$@"
 fi
