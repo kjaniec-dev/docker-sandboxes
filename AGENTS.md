@@ -18,9 +18,8 @@ files under `harnesses/<name>/`:
 2. `kit/spec.yaml` is a full sandbox kit defining the agent, network-egress
    allowlist, instructions and synchronous `setup.install` bootstrap.
    The kit is applied only when a sandbox is created.
-3. `bin/` launches or reuses direct harness sandboxes through `sbx create` and
-   `sbx run --name`; Claude applies `~/.sbxenv.yaml` with `sbx env create --name`
-   before `sbx run --name`.
+3. `bin/` launches or reuses harness sandboxes through `sbx create` and
+   `sbx run --name`. Claude passes its local v2 kit directly to `sbx create`.
 4. `scripts/bootstrap.sh` installs or registers agent-specific integrations
    during creation; `scripts/verify.sh` verifies the resulting sandbox.
 
@@ -38,16 +37,15 @@ agent-managed configuration when a sandbox is created. Claude plugins are
 installed by the bootstrap baked into the Claude image; agent MCP registration
 belongs in each bootstrap. Superpowers, pinned Caveman and Playwright skills
 live in the host's native `sbx` skills store, managed by `bin/sbx-skills` and
-`shared/skills.sh`. Direct launchers request `--skills=readonly`, and Claude's
-environment declares `skills: readonly`; no harness manually mounts or symlinks
-the skills store.
+`shared/skills.sh`. All launchers request `--skills=readonly`; no harness
+manually mounts or symlinks the skills store.
 
 Mount model: the target repository is mounted read/write at the same absolute
 path inside its sandbox. For direct non-Claude harnesses, when the target differs
 from this repository, this harness repository is mounted read-only so bootstrap
 and verification scripts remain available. If target is under this repository's
 `.worktrees/`, only `harnesses/` and `shared/` are mounted read-only to avoid
-overlapping mounts. Claude's bootstrap is baked into its image, so its environment
+overlapping mounts. Claude's bootstrap is baked into its image, so its sandbox
 does not mount this harness repository. Native skills access is managed by SBX
 rather than an explicit host-path mount.
 
@@ -105,8 +103,7 @@ rather than an explicit host-path mount.
 - OpenJDK 25, Maven, and Gradle are present in all templates and verified by
   all verification scripts.
 - Require sbx 0.43.0+ and host jq. Launchers do not generate environment files;
-  Claude reads the user-owned `~/.sbxenv.yaml`, and Junie API keys are
-  session-only overrides on `sbx run`.
+  Junie API keys are session-only overrides on `sbx run`.
 - Kit and native-skills settings apply when a sandbox is created. Remove and
   recreate the affected sandbox after changing either setting.
 - All bootstrap scripts must remain idempotent for explicit repair runs.

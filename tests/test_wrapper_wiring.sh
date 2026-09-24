@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 grep -Fq 'FROM docker/sandbox-templates:claude-code-docker' "$ROOT/harnesses/claude-code/Dockerfile"
 grep -Fq 'COPY harnesses/claude-code/scripts/bootstrap.sh /usr/local/lib/claude-sbx/bootstrap.sh' \
   "$ROOT/harnesses/claude-code/Dockerfile"
-grep -Fq 'TEMPLATE="claude-sbx:local"' "$ROOT/harnesses/claude-code/bin/claude-code-sbx"
+grep -Fq "KIT=\"\$ROOT/harnesses/claude-code/kit\"" "$ROOT/harnesses/claude-code/bin/claude-code-sbx"
 grep -Fq 'FROM docker/sandbox-templates:codex-docker' "$ROOT/harnesses/codex/Dockerfile"
 grep -Fq 'codex-sbx:local' "$ROOT/harnesses/codex/bin/codex-sbx"
 grep -Fq 'harnesses/codex' "$ROOT/bin/codex-sbx"
@@ -66,12 +66,6 @@ export MOCK_STORE="$tmp/shared skills"
 export MOCK_LOG="$tmp/commands.jsonl"
 export HOME="$tmp/home"
 mkdir -p "$HOME"
-agent_path="$ROOT/harnesses/claude-code/kit"
-printf '%s\n' \
-  'schemaVersion: "1"' \
-  "agent: $agent_path" \
-  'workspace: ${{ env.projectDir }}' \
-  'skills: readonly' >"$HOME/.sbxenv.yaml"
 
 source "$ROOT/shared/skills.sh"
 for skill in "${SUPERPOWERS_SKILLS[@]}" caveman playwright-cli; do
@@ -95,7 +89,7 @@ case "$1 $2" in
       {repository:"docker.io/library/codex-sbx",tag:"local"},
       {repository:"docker.io/library/claude-sbx",tag:"local"}
     ]}' ;;
-  'create --name'|'env create'|'run --name') ;;
+  'create --name'|'run --name') ;;
   *)
     echo "Unexpected sbx operation: $*" >&2
     exit 92
@@ -129,17 +123,18 @@ jq -se --arg name "$codex_name" --arg root "$ROOT" --arg repo "$repo" \
 
 : >"$MOCK_LOG"
 claude_name="$(printf '%s' "$repo" | shasum -a 256 | awk '{print "claude-repo-" substr($1,1,8)}')"
+claude_kit="$ROOT/harnesses/claude-code/kit"
 (
   cd "$repo"
   "$ROOT/bin/claude-sbx" --model sonnet --prompt 'hello "world"'
 )
-jq -se --arg name "$claude_name" --arg store "$MOCK_STORE" '
-  map(select(.[0:2] == ["env", "create"])) as $create |
+jq -se --arg name "$claude_name" --arg kit "$claude_kit" --arg repo "$repo" --arg store "$MOCK_STORE" '
+  map(select(.[0:2] == ["create", "--name"])) as $create |
   map(select(.[0:2] == ["run", "--name"])) as $run |
-  $create == [["env", "create", "--auto-approve", "--name", $name]] and
+  $create == [["create", "--name", $name, "--skills=readonly", $kit, $repo]] and
   $run == [["run", "--name", $name, "--", "--model", "sonnet", "--prompt", "hello \"world\""]] and
   (map(select(.[0:2] == ["template", "ls"])) | length) == 0 and
-  (map(select(.[0:2] == ["create", "--name"])) | length) == 0 and
-  (map(select(.[0:2] == ["ls", "--json"])) | length) == 0 and
+  (map(select(.[0:2] == ["ls", "--json"])) | length) == 1 and
+  (map(select(.[0:2] == ["env", "create"])) | length) == 0 and
   all(.[]; (tostring | contains($store) | not))
 ' "$MOCK_LOG" >/dev/null
