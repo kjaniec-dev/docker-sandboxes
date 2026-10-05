@@ -1,0 +1,9 @@
+schemaVersion: "1"
+agent: claude-dev
+
+kits:
+  - ../../workloads/claude-dev
+  - docker/sbx-kit-claude-mixin:latest
+
+env:
+  SBX_AGENT_KIND: claude

@@ -1,0 +1,9 @@
+schemaVersion: "1"
+agent: opencode-dev
+
+kits:
+  - ../../workloads/opencode-dev
+  - docker/sbx-kit-opencode-mixin:latest
+
+env:
+  SBX_AGENT_KIND: opencode
