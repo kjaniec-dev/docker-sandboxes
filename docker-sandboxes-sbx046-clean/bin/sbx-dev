@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+resolve_self() {
+  local source="${BASH_SOURCE[0]}" dir
+  while [[ -L "$source" ]]; do
+    dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+  printf '%s\n' "$source"
+}
+
+SELF="$(resolve_self)"
+ROOT="$(cd -P "$(dirname "$SELF")/.." >/dev/null 2>&1 && pwd)"
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  sbx-dev <claude|codex|opencode|antigravity|junie|copilot> [agent args...]
+  claude-sbx [agent args...]
+  codex-sbx [agent args...]
+  opencode-sbx [agent args...]
+  agy-sbx [agent args...]
+  junie-sbx [agent args...]
+  copilot-sbx [agent args...]
+
+profile:
+  SBX_PROFILE=personal   # default
+  SBX_PROFILE=client
+EOF
+}
+
+command_name="$(basename "$0")"
+case "$command_name" in
+  claude-sbx) agent=claude ;;
+  codex-sbx) agent=codex ;;
+  opencode-sbx) agent=opencode ;;
+  agy-sbx) agent=antigravity ;;
+  junie-sbx) agent=junie ;;
+  copilot-sbx) agent=copilot ;;
+  sbx-dev)
+    [[ $# -gt 0 ]] || { usage; exit 2; }
+    agent="$1"
+    shift
+    ;;
+  *)
+    echo "sbx-dev: unknown invocation name: $command_name" >&2
+    exit 2
+    ;;
+esac
+
+profile="${SBX_PROFILE:-}"
+if [[ -z "$profile" && -f "$HOME/.config/docker-sandboxes/profile" ]]; then
+  profile="$(tr -d '[:space:]' < "$HOME/.config/docker-sandboxes/profile")"
+fi
+profile="${profile:-personal}"
+
+case "$profile:$agent" in
+  personal:claude|personal:codex|personal:opencode|personal:antigravity|personal:junie) ;;
+  client:claude|client:copilot) ;;
+  *)
+    echo "sbx-dev: agent '$agent' is not enabled in profile '$profile'" >&2
+    exit 2
+    ;;
+esac
+
+command -v sbx >/dev/null 2>&1 || {
+  echo "sbx-dev: 'sbx' not found; install Docker Sandboxes 0.46.0+" >&2
+  exit 1
+}
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "sbx-dev: run from inside a Git repository" >&2
+  exit 2
+}
+
+mkdir -p "$repo_root/.worktrees"
+if ! git -C "$repo_root" check-ignore -q "$repo_root/.worktrees/.sbx-ignore-probe"; then
+  echo "sbx-dev: .worktrees/ must be ignored by Git before launching" >&2
+  exit 3
+fi
+
+slug="$(basename "$repo_root" | tr '[:upper:]_' '[:lower:]-' | sed -E 's/[^a-z0-9.+-]+/-/g; s/^-+//; s/-+$//')"
+digest="$(printf '%s' "$repo_root" | shasum -a 256 | awk '{print substr($1,1,8)}')"
+prefix="$agent"
+[[ "$profile" == client ]] && prefix="client-$agent"
+name="$prefix-$slug-$digest"
+
+agent_env="$ROOT/env/$profile/$agent.sbxenv.yaml"
+common_env="$ROOT/env/common.sbxenv.yaml"
+[[ -f "$agent_env" ]] || { echo "sbx-dev: missing environment: $agent_env" >&2; exit 2; }
+
+files=("$agent_env" "$common_env")
+local_overlay="$HOME/.config/docker-sandboxes/$profile.sbxenv.yaml"
+[[ -f "$local_overlay" ]] && files+=("$local_overlay")
+
+args=(--env-arg "workspace=$repo_root")
+if [[ "$profile:$agent" == client:claude ]]; then
+  : "${ANTHROPIC_VERTEX_PROJECT_ID:?Set ANTHROPIC_VERTEX_PROJECT_ID for client Claude Vertex}"
+  : "${CLOUD_ML_REGION:?Set CLOUD_ML_REGION for client Claude Vertex}"
+  args+=(
+    --env-arg "vertexProject=$ANTHROPIC_VERTEX_PROJECT_ID"
+    --env-arg "vertexRegion=$CLOUD_ML_REGION"
+  )
+fi
+
+# Apply/reconcile the declarative environment without opening an agent session.
+sbx env run "${files[@]}" --name "$name" --detached "${args[@]}"
+
+# Attach through the normal run command so arguments continue to pass straight
+# to the selected agent, preserving the convenient old launcher UX.
+if (($# > 0)); then
+  exec sbx run --name "$name" -- "$@"
+else
+  exec sbx run --name "$name"
+fi

@@ -1,0 +1,26 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+displayName: Claude Vertex AI access
+description: Runtime egress and guidance for Claude Code running through Google Vertex AI.
+kind: mixin
+version: "1.0.0"
+
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          - aiplatform.googleapis.com:443
+          - "*.aiplatform.googleapis.com:443"
+          - oauth2.googleapis.com:443
+          - sts.googleapis.com:443
+          - iamcredentials.googleapis.com:443
+          - cloudresourcemanager.googleapis.com:443
+          - serviceusage.googleapis.com:443
+
+  - type: com.docker.sandbox/agent-context@1
+    config:
+      content: |
+        This Claude Code sandbox uses Google Vertex AI as its model backend.
+        Authentication is supplied by the client's approved ADC/WIF mechanism;
+        do not create or commit replacement service-account keys.

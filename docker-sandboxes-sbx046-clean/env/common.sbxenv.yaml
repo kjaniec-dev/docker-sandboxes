@@ -1,0 +1,22 @@
+schemaVersion: "1"
+
+args:
+  workspace:
+    required: true
+    description: Absolute path of the Git repository mounted as the writable workspace
+
+workspace: "${{ env.args.workspace }}"
+
+sandboxOptions:
+  pullPolicy: always
+  skills: readonly
+
+kits:
+  - ../mixins/dev
+
+# Remote MCP servers belong to the native SBX gateway. Add common servers here
+# once instead of editing every agent's config.
+mcp:
+  servers:
+    - name: context7
+      url: https://mcp.context7.com/mcp

@@ -1,0 +1,20 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+displayName: OpenCode Dev Shell
+description: Minimal workload identity for OpenCode composed with Docker's official OpenCode V3 mixin.
+kind: workload
+version: "1.0.0"
+provides: ["opencode-dev@1.0.0"]
+
+capabilities:
+  - type: com.docker.sandbox/sbx@1
+
+  - type: com.docker.sandbox/agent-skills@1
+    optional: true
+    config:
+      path: /home/agent/.config/opencode/skills
+      mode: readonly
+
+  - type: com.docker.sandbox/agent-context@1
+    config:
+      filename: AGENTS.md
