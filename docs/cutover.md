@@ -110,3 +110,37 @@ and all seven environment plans. Junie infrastructure smoke, including its actua
 passed fresh, stop/start and delete/recreate. The public launcher also completed a real `--help`
 invocation against the preserved user sandbox. Disposable test sandboxes were removed and the
 temporary unused Junie service binding was pruned; the user's global custom secret was retained.
+
+## Vertex ADC correction, 2026-10-06
+
+Client Claude started on SBX 0.47.0 with Vertex selected but could not load Google credentials.
+The host already had approved user ADC; the sandbox had neither the standard ADC file nor
+`GOOGLE_APPLICATION_CREDENTIALS`. A native read-only mount of that single file to the standard
+agent-home ADC path fixed credential visibility without recreating the user's sandbox.
+
+The machine-local client overlay now uses a native `postCreate` host hook, guarded by
+`SBX_AGENT=claude-dev`, to restore the same mount after recreation. No credential content was copied
+into the repository, no new keys or login flow were created, and Copilot received no ADC mount.
+The generic approved-user-ADC configuration is documented in `docs/client-vertex.md`.
+
+The existing client Claude sandbox completed a Vertex model response. Full client Claude smoke
+then passed tooling, Chromium, skills, context, Serena, Context7, lifecycle and authenticated model
+responses at fresh, stop/start and delete/recreate stages. The disposable sandbox was removed.
+The existing ADC mount was confirmed read-only, Copilot credential isolation was checked, and
+38 offline behavior tests passed. Other approved client WIF variants remain unverified.
+
+## Haiku regional override, 2026-10-06
+
+Client Claude used the `eu` multi-region default, but Haiku 4.5 required `europe-west1`.
+The machine-local client overlay now declares `VERTEX_REGION_CLAUDE_HAIKU_4_5=europe-west1`
+without changing the default region, ADC or other model regions.
+
+Client Claude now launches through native `sbx env exec` so the merged environment applies to
+new sessions in existing sandboxes. Its original workload permission flag, project working
+directory and individual agent arguments are preserved. Other launch paths remain unchanged.
+A completed Haiku 4.5 response was verified in `europe-west1` with the default still `eu`.
+
+Validation passed 40 behavioral tests, five native kit inspections and all seven environment
+plans. Full authenticated client Claude smoke passed fresh, stop/start and delete/recreate,
+preserving default-model behavior and ADC access with the new override. Disposable test sandboxes
+were removed; the user's existing sandboxes were preserved.

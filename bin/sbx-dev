@@ -129,9 +129,6 @@ fi
 # Apply/reconcile the declarative environment without opening an agent session.
 sbx env run "${files[@]}" --name "$name" --detached "${args[@]}"
 
-# Attach through the normal run command so arguments continue to pass straight
-# to the selected agent, preserving the convenient old launcher UX.
-run_args=(run --name "$name")
 if [[ "$agent" == junie ]]; then
   brave=true
   for argument in "$@"; do
@@ -145,6 +142,12 @@ if [[ "$agent" == junie ]]; then
   [[ ! -t 0 || ! -t 1 ]] || exec_args+=(-it)
   exec sbx "${exec_args[@]}" "${files[@]}" -- junie "$@"
 fi
+if [[ "$profile:$agent" == client:claude ]]; then
+  exec_args=(env exec --name "$name" "${args[@]}")
+  [[ ! -t 0 || ! -t 1 ]] || exec_args+=(-it)
+  exec sbx "${exec_args[@]}" "${files[@]}" -- claude --dangerously-skip-permissions "$@"
+fi
+run_args=(run --name "$name")
 if (($# > 0)); then
   exec sbx "${run_args[@]}" -- "$@"
 else

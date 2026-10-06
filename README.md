@@ -77,8 +77,7 @@ SBX_PROFILE=client claude-sbx
 
 Client Claude requires host `ANTHROPIC_VERTEX_PROJECT_ID` and `CLOUD_ML_REGION`.
 Keep its approved ADC/WIF configuration in the machine-local overlay; see
-[client Vertex configuration](docs/client-vertex.md). Vertex runtime/authentication validation is
-deferred at the user's request.
+[client Vertex configuration](docs/client-vertex.md) for credential visibility and runtime verification.
 
 ## Native lifecycle and authentication
 
@@ -107,8 +106,9 @@ Junie's official workload remains in use. Its small declaration-only extension s
 provider domain, while native JVM proxy options let its MCP client reach the SBX gateway.
 
 `sbx env run` starts an existing sandbox without re-provisioning it. Kit and policy edits apply
-when it is recreated. Junie uses `sbx env exec` to apply current environment variables to each
-new session. Other launchers' subsequent plain `sbx run --name` uses the existing container's
+when it is recreated. Junie and client Claude use `sbx env exec` to apply current environment variables
+to each new session. Client Claude preserves its thin workload's `--dangerously-skip-permissions`
+launch default. Other launchers' subsequent plain `sbx run --name` uses the existing container's
 environment, so recreate those containers to apply changed defaults. Use native `sbx env rm`
 with the same files, name and arguments
 shown by the launcher, then launch again. Removing a sandbox loses its sandbox-local session state;
