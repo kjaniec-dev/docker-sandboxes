@@ -214,6 +214,41 @@ elif args[:1] != ["run"]:
         self.reset_log()
         self.assert_no_launch(self.launch("claude", env={"SBX_PROFILE": "client", "ANTHROPIC_VERTEX_PROJECT_ID": "project"}))
 
+    def test_client_claude_executes_with_current_environment_and_preserves_argv(self):
+        config = self.home / ".config/docker-sandboxes"
+        config.mkdir(parents=True)
+        overlay = config / "client.sbxenv.yaml"
+        overlay.write_text('schemaVersion: "1"\nenv:\n  VERTEX_REGION_CLAUDE_HAIKU_4_5: europe-west1\n')
+        env = {"SBX_PROFILE": "client", "ANTHROPIC_VERTEX_PROJECT_ID": "test-project", "CLOUD_ML_REGION": "eu"}
+        for args in ([], ["--model", "haiku", "", "space in argument", "$(echo literal)", "--"]):
+            with self.subTest(args=args):
+                self.reset_log()
+                result = self.launch("claude", args=args, env=env)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                calls = [call["argv"] for call in self.calls() if call["argv"][:2] == ["env", "exec"]]
+                self.assertEqual(len(calls), 1, "Client Claude must apply the current native environment")
+                provision = self.operation(["env", "run"])["argv"]
+                name = provision[provision.index("--name") + 1]
+                self.assertEqual(calls[0], [
+                    "env", "exec", "--name", name,
+                    "--env-arg", "workspace=" + str(self.repo),
+                    "--env-arg", "vertexProject=test-project",
+                    "--env-arg", "vertexRegion=eu",
+                    str(ROOT / "env/client/claude.sbxenv.yaml"),
+                    str(ROOT / "env/common.sbxenv.yaml"), str(overlay),
+                    "--", "claude", "--dangerously-skip-permissions", *args,
+                ])
+                self.assertFalse(any(call["argv"][:1] == ["run"] for call in self.calls()))
+
+    def test_client_claude_environment_failure_never_executes(self):
+        result = self.launch("claude", env={
+            "SBX_PROFILE": "client", "ANTHROPIC_VERTEX_PROJECT_ID": "test-project",
+            "CLOUD_ML_REGION": "eu", "SBX_TEST_ENV_EXIT": "17",
+        })
+        self.assertEqual(result.returncode, 17)
+        self.assertFalse(any(call["argv"][:2] == ["env", "exec"] or call["argv"][:1] == ["run"]
+                             for call in self.calls()))
+
     def test_junie_uses_native_secret_instead_of_forwarding_host_key(self):
         result = self.launch("junie", env={"JUNIE_API_KEY": "secret-value"})
         self.assertEqual(result.returncode, 0, result.stderr)
