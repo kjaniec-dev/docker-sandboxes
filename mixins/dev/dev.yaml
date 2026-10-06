@@ -27,6 +27,10 @@ capabilities:
           - docs.docker.com:443
           - "*.githubusercontent.com:443"
 
+          # IBM documentation (not all of it is indexed in Context7).
+          - ibm.com:443
+          - "*.ibm.com:443"
+
           # JavaScript / Node.
           - registry.npmjs.org:443
           - nodejs.org:443

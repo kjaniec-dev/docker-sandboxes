@@ -4,6 +4,7 @@ Use the same development workflow regardless of the active coding agent:
 
 - Use **Superpowers** for planning, implementation workflow and verification when the relevant skills are available.
 - Prefer **Context7** through the SBX MCP gateway for current library and framework documentation instead of relying on stale API memory.
+- When Context7 lacks a library or product, fetch the official docs directly. IBM documentation (`www.ibm.com/docs`, `developer.ibm.com`, `cloud.ibm.com/docs`) is reachable from the sandbox.
 - Prefer **Serena** for semantic code navigation and symbol-aware edits when its MCP server is available.
 - Use **Playwright CLI** for browser, UI and accessibility validation when a runnable frontend exists.
 - Prefer project-local package-manager, formatter, linter, build and test versions over globally installed convenience tools.
