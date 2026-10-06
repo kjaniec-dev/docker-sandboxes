@@ -1,0 +1,13 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+displayName: Junie backend access
+description: Additional provider egress required by Junie CLI 3294.5 on the official Junie workload.
+kind: mixin
+version: "1.0.0"
+
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          - ingrazzio-cloud-prod.labs.jb.gg:443

@@ -1,0 +1,12 @@
+schemaVersion: "1"
+agent: opencode-dev
+args:
+  skillsPath:
+    default: /home/agent/.config/opencode/skills
+
+kits:
+  - ../../workloads/opencode-dev
+  - docker/sbx-kit-opencode-mixin:latest
+
+env:
+  SBX_AGENT_KIND: opencode

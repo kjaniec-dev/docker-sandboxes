@@ -1,0 +1,11 @@
+schemaVersion: "1"
+agent: sbx-kit-antigravity
+args:
+  skillsPath:
+    default: /home/agent/.gemini/config/skills
+
+kits:
+  - docker/sbx-kit-antigravity:latest
+
+env:
+  SBX_AGENT_KIND: antigravity

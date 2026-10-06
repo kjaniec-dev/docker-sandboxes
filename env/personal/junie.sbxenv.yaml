@@ -1,0 +1,17 @@
+schemaVersion: "1"
+agent: sbx-kit-junie
+args:
+  skillsPath:
+    default: /home/agent/.junie/skills
+
+kits:
+  - docker/sbx-kit-junie:latest
+  - source: ../../workloads/junie-dev
+
+env:
+  SBX_AGENT_KIND: junie
+  # Junie's OkHttp MCP client ignores HTTP_PROXY; use native JVM proxy settings.
+  JAVA_TOOL_OPTIONS: >-
+    -Djavax.net.ssl.trustStore=/opt/sbx-dev/java/lib/security/cacerts
+    -Dhttp.proxyHost=gateway.docker.internal -Dhttp.proxyPort=3128
+    -Dhttps.proxyHost=gateway.docker.internal -Dhttps.proxyPort=3128

@@ -1,0 +1,12 @@
+schemaVersion: "1"
+agent: claude-dev
+args:
+  skillsPath:
+    default: /home/agent/.claude/skills
+
+kits:
+  - ../../workloads/claude-dev
+  - docker/sbx-kit-claude-mixin:latest
+
+env:
+  SBX_AGENT_KIND: claude

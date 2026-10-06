@@ -1,8 +1,0 @@
-schemaVersion: "1"
-agent: sbx-kit-copilot
-
-kits:
-  - docker/sbx-kit-copilot:latest
-
-env:
-  SBX_AGENT_KIND: copilot

@@ -1,0 +1,11 @@
+schemaVersion: "1"
+agent: sbx-kit-codex
+args:
+  skillsPath:
+    default: /home/agent/.agents/skills
+
+kits:
+  - docker/sbx-kit-codex:latest
+
+env:
+  SBX_AGENT_KIND: codex

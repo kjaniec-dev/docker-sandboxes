@@ -1,0 +1,23 @@
+schemaVersion: "1"
+agent: claude-dev
+
+args:
+  skillsPath:
+    default: /home/agent/.claude/skills
+  vertexProject:
+    required: true
+    description: Google Cloud project containing Vertex AI access
+  vertexRegion:
+    required: true
+    description: Vertex AI region approved for the client
+
+kits:
+  - ../../workloads/claude-dev
+  - docker/sbx-kit-claude-mixin:latest
+  - ../../mixins/vertex
+
+env:
+  SBX_AGENT_KIND: claude
+  CLAUDE_CODE_USE_VERTEX: "1"
+  ANTHROPIC_VERTEX_PROJECT_ID: "${{ env.args.vertexProject }}"
+  CLOUD_ML_REGION: "${{ env.args.vertexRegion }}"

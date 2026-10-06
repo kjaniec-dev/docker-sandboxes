@@ -1,0 +1,95 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+displayName: KJ Dev Environment
+description: Shared full-stack, architecture and DevOps tooling and instructions.
+kind: mixin
+version: "1.0.0"
+dockerfile: ./dev.dockerfile
+args:
+  skillsPath:
+    default: /home/agent/.agents/skills
+    pattern: '^/home/agent/[A-Za-z0-9._/-]+$'
+
+capabilities:
+  - type: com.docker.sandbox/agent-skills@1
+    optional: true
+    config:
+      path: "${{ kit.args.skillsPath }}"
+      mode: readonly
+
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          # Git / GitHub and release assets.
+          - github.com:443
+          - "*.github.com:443"
+          - docs.docker.com:443
+          - "*.githubusercontent.com:443"
+
+          # JavaScript / Node.
+          - registry.npmjs.org:443
+          - nodejs.org:443
+
+          # Go modules and vulnerability data.
+          - go.dev:443
+          - "*.golang.org:443"
+          - storage.googleapis.com:443
+          - vuln.go.dev:443
+          - api.osv.dev:443
+
+          # Python / uv.
+          - pypi.org:443
+          - files.pythonhosted.org:443
+          - astral.sh:443
+
+          # Maven / Gradle.
+          - repo1.maven.org:443
+          - repo.maven.apache.org:443
+          - plugins.gradle.org:443
+          - services.gradle.org:443
+          - downloads.gradle.org:443
+
+          # Browser automation downloads and common package mirrors.
+          - cdn.playwright.dev:443
+          - playwright.download.prss.microsoft.com:443
+          - "*.ubuntu.com:443"
+          - download.docker.com:443
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      install:
+        - command: |
+            # SBX 0.46 recreates these skills ancestors as root-owned directories.
+            if [ "$SBX_AGENT_KIND" = antigravity ]; then
+              chown agent:agent /home/agent/.gemini /home/agent/.gemini/config
+            fi
+            case "$SBX_AGENT_KIND" in
+              antigravity|opencode) ln -sfn /opt/sbx-dev/bin/jq /usr/local/bin/jq ;;
+            esac
+            if ! uv --version >/dev/null 2>&1; then
+              ln -sfn /opt/sbx-dev/bin/uv /usr/local/bin/uv
+            fi
+            if ! uvx --version >/dev/null 2>&1; then
+              ln -sfn /opt/sbx-dev/bin/uvx /usr/local/bin/uvx
+            fi
+            if [ -f /usr/local/share/ca-certificates/proxy-ca.crt ]; then
+              /opt/sbx-dev/java/bin/keytool -list -alias sbx-proxy -keystore /opt/sbx-dev/java/lib/security/cacerts -storepass changeit >/dev/null 2>&1 ||
+              /opt/sbx-dev/java/bin/keytool -importcert -noprompt -alias sbx-proxy -file /usr/local/share/ca-certificates/proxy-ca.crt -keystore /opt/sbx-dev/java/lib/security/cacerts -storepass changeit
+            fi
+          user: "0"
+          env: [SBX_AGENT_KIND]
+          description: Activate working uv and add the sandbox proxy CA to Java
+        - command: /opt/sbx-dev/serena/bin/python /opt/sbx-dev/configure-agent.py
+          user: agent
+          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR]
+          description: Configure sandbox-local Serena MCP
+      startup:
+        - command: /opt/sbx-dev/serena/bin/python /opt/sbx-dev/configure-agent.py
+          user: agent
+          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR]
+          description: Reconcile sandbox-local Serena MCP
+
+  - type: com.docker.sandbox/agent-context@1
+    config:
+      contentFile: ./dev-context.md

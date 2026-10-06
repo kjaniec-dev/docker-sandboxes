@@ -1,0 +1,13 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+displayName: Claude Dev Shell
+description: Minimal workload identity for Claude Code composed with Docker's official Claude V3 mixin.
+kind: workload
+version: "1.0.0"
+
+capabilities:
+  - type: com.docker.sandbox/sbx@1
+
+  - type: com.docker.sandbox/agent-context@1
+    config:
+      filename: CLAUDE.md

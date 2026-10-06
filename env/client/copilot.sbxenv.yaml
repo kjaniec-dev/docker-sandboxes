@@ -1,0 +1,11 @@
+schemaVersion: "1"
+agent: sbx-kit-copilot
+args:
+  skillsPath:
+    default: /home/agent/.copilot/skills
+
+kits:
+  - docker/sbx-kit-copilot:latest
+
+env:
+  SBX_AGENT_KIND: copilot

@@ -1,9 +1,8 @@
-# Generated Docker Sandbox exports
-.build/
-
 # Local operating-system and editor files
 .DS_Store
 .idea/
+__pycache__/
+.superpowers/
 
 # Project-local agent worktrees
 .worktrees/
