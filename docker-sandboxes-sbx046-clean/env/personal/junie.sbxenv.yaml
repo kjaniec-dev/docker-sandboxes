@@ -1,8 +1,0 @@
-schemaVersion: "1"
-agent: sbx-kit-junie
-
-kits:
-  - docker/sbx-kit-junie:latest
-
-env:
-  SBX_AGENT_KIND: junie

@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+resolve_self() {
+  local source="${BASH_SOURCE[0]}" dir
+  while [[ -L "$source" ]]; do
+    dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+  printf '%s\n' "$source"
+}
+
+SELF="$(resolve_self)"
+ROOT="$(cd -P "$(dirname "$SELF")/.." >/dev/null 2>&1 && pwd)"
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  sbx-dev <claude|codex|opencode|antigravity|junie|copilot> [agent args...]
+  claude-sbx [agent args...]
+  codex-sbx [agent args...]
+  opencode-sbx [agent args...]
+  agy-sbx [agent args...]
+  junie-sbx [agent args...]
+  copilot-sbx [agent args...]
+
+profile:
+  SBX_PROFILE=personal   # default
+  SBX_PROFILE=client
+EOF
+}
+
+command_name="$(basename "$0")"
+case "$command_name" in
+  claude-sbx) agent=claude ;;
+  codex-sbx) agent=codex ;;
+  opencode-sbx) agent=opencode ;;
+  agy-sbx) agent=antigravity ;;
+  junie-sbx) agent=junie ;;
+  copilot-sbx) agent=copilot ;;
+  sbx-dev)
+    [[ $# -gt 0 ]] || { usage; exit 2; }
+    agent="$1"
+    shift
+    ;;
+  *)
+    echo "sbx-dev: unknown invocation name: $command_name" >&2
+    exit 2
+    ;;
+esac
+
+config_root="${XDG_CONFIG_HOME:-$HOME/.config}/docker-sandboxes"
+profile="${SBX_PROFILE:-}"
+if [[ -z "$profile" && -f "$config_root/profile" ]]; then
+  profile="$(tr -d '[:space:]' < "$config_root/profile")"
+fi
+profile="${profile:-personal}"
+
+case "$profile:$agent" in
+  personal:claude|personal:codex|personal:opencode|personal:antigravity|personal:junie) ;;
+  client:claude|client:copilot) ;;
+  *)
+    echo "sbx-dev: agent '$agent' is not enabled in profile '$profile'" >&2
+    exit 2
+    ;;
+esac
+
+command -v sbx >/dev/null 2>&1 || {
+  echo "sbx-dev: 'sbx' not found; install Docker Sandboxes 0.46.0+" >&2
+  exit 1
+}
+
+version="$(sbx version)"
+if [[ ! "$version" =~ ^sbx\ version:\ v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][a-zA-Z0-9.+-]+)?([[:space:]].*)?$ ]] ||
+   { (( BASH_REMATCH[1] == 0 && BASH_REMATCH[2] < 46 )); } ||
+   [[ "${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}" == 0.46.0 && "${BASH_REMATCH[4]}" == -* ]]; then
+  echo "sbx-dev: Docker Sandboxes 0.46.0+ is required (observed: $version)" >&2
+  exit 1
+fi
+export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "sbx-dev: run from inside a Git repository" >&2
+  exit 2
+}
+
+common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+common_dir="$(cd "$common_dir" && pwd -P)"
+if [[ "$common_dir" != "$repo_root" && "$common_dir" != "$repo_root/"* ]]; then
+  echo "sbx-dev: this worktree's Git metadata is outside its mount; launch from the main checkout" >&2
+  exit 3
+fi
+if [[ -L "$repo_root/.worktrees" || -n "$(git -C "$repo_root" ls-files -- .worktrees)" ]]; then
+  echo "sbx-dev: .worktrees/ must be an untracked directory inside the repository" >&2
+  exit 3
+fi
+if ! git -C "$repo_root" check-ignore -q "$repo_root/.worktrees/.sbx-ignore-probe"; then
+  echo "sbx-dev: .worktrees/ must be ignored by Git before launching" >&2
+  exit 3
+fi
+mkdir -p "$repo_root/.worktrees"
+
+slug="$(basename "$repo_root" | tr '[:upper:]_' '[:lower:]-' | sed -E 's/[^a-z0-9.-]+/-/g; s/^-+//; s/-+$//')"
+slug="${slug:-project}"
+digest="$(printf '%s' "$repo_root" | shasum -a 256 | awk '{print substr($1,1,8)}')"
+prefix="$agent"
+[[ "$profile" == client ]] && prefix="client-$agent"
+name="$prefix-$slug-$digest"
+
+agent_env="$ROOT/env/$profile/$agent.sbxenv.yaml"
+common_env="$ROOT/env/common.sbxenv.yaml"
+[[ -f "$agent_env" ]] || { echo "sbx-dev: missing environment: $agent_env" >&2; exit 2; }
+
+files=("$agent_env" "$common_env")
+local_overlay="$config_root/$profile.sbxenv.yaml"
+[[ -f "$local_overlay" ]] && files+=("$local_overlay")
+
+args=(--env-arg "workspace=$repo_root")
+if [[ "$profile:$agent" == client:claude ]]; then
+  : "${ANTHROPIC_VERTEX_PROJECT_ID:?Set ANTHROPIC_VERTEX_PROJECT_ID for client Claude Vertex}"
+  : "${CLOUD_ML_REGION:?Set CLOUD_ML_REGION for client Claude Vertex}"
+  args+=(
+    --env-arg "vertexProject=$ANTHROPIC_VERTEX_PROJECT_ID"
+    --env-arg "vertexRegion=$CLOUD_ML_REGION"
+  )
+fi
+
+# Apply/reconcile the declarative environment without opening an agent session.
+sbx env run "${files[@]}" --name "$name" --detached "${args[@]}"
+
+# Attach through the normal run command so arguments continue to pass straight
+# to the selected agent, preserving the convenient old launcher UX.
+run_args=(run --name "$name")
+if [[ "$agent" == junie ]]; then
+  brave=true
+  for argument in "$@"; do
+    case "$argument" in --brave|--brave=*|--no-brave) brave=false ;; esac
+  done
+  [[ "$brave" != true ]] || set -- --brave "$@"
+  # The official kit masks a custom secret with proxy-managed. Override only
+  # its public placeholder; native env exec also applies updated JVM settings.
+  placeholder="$(python3 "$ROOT/workloads/junie-dev/token-placeholder.py" "$name")"
+  exec_args=(env exec --name "$name" "${args[@]}" --env "JUNIE_API_KEY=$placeholder")
+  [[ ! -t 0 || ! -t 1 ]] || exec_args+=(-it)
+  exec sbx "${exec_args[@]}" "${files[@]}" -- junie "$@"
+fi
+if (($# > 0)); then
+  exec sbx "${run_args[@]}" -- "$@"
+else
+  exec sbx "${run_args[@]}"
+fi

@@ -1,0 +1,26 @@
+schemaVersion: "1"
+
+args:
+  skillsPath:
+    description: Agent-specific destination for the native shared skills store
+  workspace:
+    required: true
+    description: Absolute path of the Git repository mounted as the writable workspace
+
+workspace: "${{ env.args.workspace }}"
+
+sandboxOptions:
+  pullPolicy: always
+  skills: readonly
+
+kits:
+  - source: ../mixins/dev
+    args:
+      skillsPath: "${{ env.args.skillsPath }}"
+
+# Remote MCP servers belong to the native SBX gateway. Add common servers here
+# once instead of editing every agent's config.
+mcp:
+  servers:
+    - name: context7
+      url: https://mcp.context7.com/mcp

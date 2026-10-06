@@ -1,8 +1,0 @@
-schemaVersion: "1"
-agent: sbx-kit-codex
-
-kits:
-  - docker/sbx-kit-codex:latest
-
-env:
-  SBX_AGENT_KIND: codex

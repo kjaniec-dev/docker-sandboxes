@@ -1,111 +1,196 @@
-# Claude, Codex, OpenCode, Antigravity, and Junie Docker Sandboxes
+# Docker Sandboxes — SBX V3
 
-Reusable Docker Sandbox harnesses for Claude Code, Codex, OpenCode, Antigravity
-CLI, and Junie. Each harness gives the selected Git repository a writable
-workspace inside its own sandbox while the rest of the host stays outside
-that workspace.
+Development environments for Docker Sandboxes **0.46.0+** and Sandbox Kit **V3**.
 
-All harnesses provide the same development toolchain: Node.js 24.19.0, Go
-1.26.6, Python and uv, Serena, Docker Engine and Compose, Playwright CLI,
-OpenJDK 25, Maven, Gradle, and common Git, database, shell, and search tools.
-All five agents use SBX's native read-only `skills` mode backed by one shared
-`sbx` skills store with Superpowers, pinned Caveman and Playwright CLI skills.
-Agent-specific MCP registrations and Claude plugins remain in sandbox bootstrap
-scripts.
+Personal: Claude Code, Codex, OpenCode, Antigravity and Junie.
+Client: Claude Code through Vertex AI and GitHub Copilot CLI.
 
-## Quick start
+Official Docker workloads or agent mixins own launch, authentication and provider network policy.
+One shared `mixins/dev` supplies developer tools, instructions and developer network policy.
+Declarative `env/` files select the composition. Public commands are symlinks to `bin/sbx-dev`.
 
-Requires Docker Sandboxes 0.43.0 or newer, Git and jq on the host, plus Docker
-to build the custom images. Full sandbox kits configure each agent. All
-launchers use `sbx create` and `sbx run --name`; Claude passes its local v2 kit
-directly to `sbx create`. No launcher generates or requires an environment
-file. The public launcher commands stay the same.
+## Machine setup
 
-Build the templates from this repository:
+Install SBX and reusable skills with native commands:
 
 ```bash
-./bin/claude-sbx-rebuild
-./bin/codex-sbx-rebuild
-./bin/opencode-sbx-rebuild
-./bin/agy-sbx-rebuild
-./bin/junie-sbx-rebuild
+brew install docker/tap/sbx
+sbx version
+sbx skills add https://github.com/obra/superpowers.git --force
+sbx skills add https://github.com/microsoft/playwright-cli.git --skill playwright-cli --force
+sbx skills add https://github.com/JuliusBrussee/caveman.git --skill caveman --force
+sbx skills ls
 ```
 
-The launcher populates the host skills store on first launch, and SBX exposes it
-to agents through native read-only skills access. To install skills ahead of
-time or update Superpowers and Playwright later (Caveman stays pinned):
+Update skills with `sbx skills update`. They remain in the native shared store and are exposed
+read-only at each agent's skills path.
+
+The launcher and validation default `SBX_KIT_BUILDER=sandbox`, preserving an explicit override.
+Native SBX builds local source kits and caches them in its builder sandbox. This toolchain was
+validated with a 32 GiB builder volume. If the default builder runs out of space, use native
+`sbx kit builder rm --force` to remove its regenerable cache, then provision the official builder:
 
 ```bash
-./bin/sbx-skills
-./bin/sbx-skills --update
+sbx create --name sbx-kit-builder --kit-arg volumeSize=32g docker/sbx-kit-builder:1
 ```
 
-Use `./bin/sbx-policy-audit` to review blocked network requests across
-sandboxes, and `./bin/sbx-new-harness <name>` to scaffold an additional
-harness with its root delegates and layout test.
-
-After upgrading to SBX 0.43.0, remove each existing sandbox once with
-`sbx rm <sandbox-name>` and launch it again so the new kit and native skills
-settings apply. This discards its sessions and sandbox-local configuration, not
-the mounted repository. Existing toolchain images can be reused unless the
-image or shared toolchain changed. Claude's launcher uses its local v2 kit just
-like the other harnesses; no user-level `~/.sbxenv.yaml` setup is required.
-
-SBX 0.43.0 no longer reads MCP OAuth client secrets named
-`mcp:<server>.client_secret`. Re-set each one without inspecting or migrating
-its value:
-
-```bash
-sbx secret set mcp:<server>:client_secret
-```
-
-Optionally make the commands available on your `PATH`:
+Install command aliases from this checkout:
 
 ```bash
 mkdir -p "$HOME/.local/bin"
-ln -sfn "$PWD/bin/claude-sbx" "$HOME/.local/bin/claude-sbx"
-ln -sfn "$PWD/bin/codex-sbx" "$HOME/.local/bin/codex-sbx"
-ln -sfn "$PWD/bin/opencode-sbx" "$HOME/.local/bin/opencode-sbx"
-ln -sfn "$PWD/bin/agy-sbx" "$HOME/.local/bin/agy-sbx"
-ln -sfn "$PWD/bin/junie-sbx" "$HOME/.local/bin/junie-sbx"
-ln -sfn "$PWD/bin/agy-sbx-rebuild" "$HOME/.local/bin/agy-sbx-rebuild"
-ln -sfn "$PWD/bin/claude-sbx-rebuild" "$HOME/.local/bin/claude-sbx-rebuild"
-ln -sfn "$PWD/bin/codex-sbx-rebuild" "$HOME/.local/bin/codex-sbx-rebuild"
-ln -sfn "$PWD/bin/opencode-sbx-rebuild" "$HOME/.local/bin/opencode-sbx-rebuild"
-ln -sfn "$PWD/bin/junie-sbx-rebuild" "$HOME/.local/bin/junie-sbx-rebuild"
+for command in claude-sbx codex-sbx opencode-sbx agy-sbx junie-sbx copilot-sbx; do
+  ln -sfn "$PWD/bin/$command" "$HOME/.local/bin/$command"
+done
 ```
 
-Then, from any Git repository, ensure project-local worktrees are ignored and
-start the harness you need:
+## Launch an agent
+
+Run inside the project's main Git checkout. Add `.worktrees/` to its Git ignore rules first.
 
 ```bash
-grep -qxF '.worktrees/' .gitignore || echo '.worktrees/' >> .gitignore
-claude-sbx
-# or
+cd ~/src/my-project
 codex-sbx
-# or
+claude-sbx
 opencode-sbx
-# or
 agy-sbx
-# or
 junie-sbx
 ```
 
-The `grep`/`echo` command modifies the target repository's `.gitignore` when
-needed. Review and commit that change in the target repository if appropriate.
+All agent arguments pass through as individual arguments. Junie defaults to `--brave`;
+an explicit `--no-brave` overrides it. OpenCode defaults to `--auto` and the OpenCode Go provider;
+an explicit `--no-auto` overrides the launch default.
 
-The harness commands create distinct sandboxes for the same repository, so
-their agent configuration and sessions do not overlap. See [the usage guide](docs/usage.md)
-for authentication, ports, verification, rebuilds, and extension guidance.
+Sandbox names combine profile, agent, repository basename and a digest of the absolute repository
+path. Repeated launches reuse the same sandbox. The launcher rejects tracked or symlinked
+`.worktrees/`, unignored worktrees, and linked checkouts whose Git metadata falls outside the
+single mounted project. Launch from the main checkout and let the agent create worktrees underneath it.
 
-## Security model
+Select a profile using `SBX_PROFILE` or a `profile` file in
+`${XDG_CONFIG_HOME:-$HOME/.config}/docker-sandboxes`. The default is `personal`.
+A machine-local `personal.sbxenv.yaml` or `client.sbxenv.yaml` in that directory merges after the
+committed agent and common environments.
 
-The selected repository is mounted read/write, so an agent can modify or delete
-files in that repository, including Git metadata. Other host paths are not
-exposed unless explicitly added as workspaces. Direct non-Claude launchers
-mount this infrastructure repository read-only when it differs from the target
-so bootstrap and verification scripts remain available. Claude's bootstrap is
-baked into its image and does not require that mount. The host skills store is
-exposed through SBX's native read-only skills mode; skill changes made by one
-sandbox cannot modify the host store. Authentication is managed outside the
-images; do not commit credentials or session state.
+```bash
+SBX_PROFILE=client copilot-sbx
+SBX_PROFILE=client claude-sbx
+```
+
+Client Claude requires host `ANTHROPIC_VERTEX_PROJECT_ID` and `CLOUD_ML_REGION`.
+Keep its approved ADC/WIF configuration in the machine-local overlay; see
+[client Vertex configuration](docs/client-vertex.md). Vertex runtime/authentication validation is
+deferred at the user's request.
+
+## Native lifecycle and authentication
+
+SBX owns credentials, sandbox creation, stop/start, removal and kit composition. Configure
+credentials and authorize their agent bindings using native SBX setup. A stored credential without
+an authorized binding is not injected. Junie's current backend is missing from the official kit's
+credential domains. With a real Junie CLI token temporarily exported as `JUNIE_API_KEY` in your
+host terminal, store it using native custom-secret substitution for both provider hosts:
+
+```bash
+sbx secret set-custom \
+  --host junie.jetbrains.com \
+  --host ingrazzio-cloud-prod.labs.jb.gg \
+  --env JUNIE_API_KEY \
+  --value "$JUNIE_API_KEY"
+unset JUNIE_API_KEY
+junie-sbx
+```
+
+The custom secret is global and survives sandbox removal; the real token stays on the host.
+The official workload masks the generated custom placeholder with `proxy-managed`. A small
+Junie-only adapter selects the public placeholder from native secret metadata, preferring sandbox
+scope over global scope, and passes it with native `sbx env exec --env`. It never retrieves the
+token. This bridges the demonstrated masking behavior without replacing native secret storage.
+Junie's official workload remains in use. Its small declaration-only extension supplies the missing
+provider domain, while native JVM proxy options let its MCP client reach the SBX gateway.
+
+`sbx env run` starts an existing sandbox without re-provisioning it. Kit and policy edits apply
+when it is recreated. Junie uses `sbx env exec` to apply current environment variables to each
+new session. Other launchers' subsequent plain `sbx run --name` uses the existing container's
+environment, so recreate those containers to apply changed defaults. Use native `sbx env rm`
+with the same files, name and arguments
+shown by the launcher, then launch again. Removing a sandbox loses its sandbox-local session state;
+the bind-mounted project remains on the host.
+
+Existing pre-rewrite sandboxes also require recreation to receive this composition. Their automatic
+migration or deletion is not part of the launcher.
+
+## MCP and instructions
+
+`env/common.sbxenv.yaml` declares Context7 once through the native SBX MCP gateway:
+
+```yaml
+mcp:
+  servers:
+    - name: context7
+      url: https://mcp.context7.com/mcp
+```
+
+In Codex, `/mcp` lists the shared endpoint as `mcp-gateway`. Context7 is exposed through it,
+with tools such as `resolve-library-id` and `query-docs`, rather than as a separate MCP server entry.
+
+Register other remote or host servers with native commands:
+
+```bash
+sbx mcp add notion --url https://mcp.notion.com/mcp
+sbx mcp load notion --sandbox <sandbox-name>
+sbx mcp ls
+```
+
+For a trusted Unity MCP loopback endpoint:
+
+```bash
+sbx mcp add unity --url http://127.0.0.1:8080/mcp --skip-ssrf-check
+sbx mcp load unity --sandbox <sandbox-name>
+```
+
+Serena runs inside the sandbox as a local stdio MCP server against the mounted project.
+Do not register it as a host `sbx mcp --command` server.
+`mixins/dev/configure-agent.py` preserves unrelated agent settings while registering Serena.
+It supplies Junie's missing gateway registration and bridges native context into Codex's global
+instruction discovery. Official kits register the gateway for the other agents.
+Their OpenCode/Antigravity `jq` merge can erase malformed MCP maps. The shared jq launcher checks
+only that merge against those two configuration paths and rejects it before a destructive write.
+
+Common instructions use native `agent-context`. SBX 0.46 creates Antigravity's skills ancestors
+as root-owned directories; a small native install hook restores their agent ownership so official
+startup hooks can write configuration.
+
+## Developer tools and composition
+
+The shared mixin supplies Java 25, Maven, Gradle, Python/uv, Serena, Go development utilities,
+pnpm/corepack, Playwright CLI/Chromium, and shell/search/database tools.
+It exports tools and their scoped dependencies without replacing the workload's operating system,
+Node or Go runtimes. A broken workload uv/uvx is replaced with the baked working binary only when its
+version probe fails.
+
+Claude and OpenCode use thin local workloads because their official standalone workload names
+collide with SBX 0.46 built-ins. Official agent mixins still supply their binaries, credentials,
+provider egress and gateway hooks. Prefer the official standalone workloads once that collision
+is resolved. Podman Desktop needs no custom SBX backend integration.
+
+## Verification
+
+Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX.
+
+```bash
+./tests/validate.sh --offline  # launcher/config/model-response behavior
+./tests/validate.sh           # also native source kit builds and all seven environment plans
+./tests/smoke.sh codex        # real tools, Chromium, skills, context, Serena and Context7
+SBX_SMOKE_MODEL=1 ./tests/smoke.sh codex  # also completed authenticated model responses
+SBX_PROFILE=client ./tests/smoke.sh copilot
+```
+
+Smoke tests create uniquely named disposable repositories and sandboxes, test fresh launch,
+stop/start and delete/recreate, then remove their sandbox and workspace. Logs remain at the printed
+location. A failed model request cannot count as a passing result. Default smoke results explicitly
+say authentication was not checked. `SBX_SMOKE_KEEP_ON_FAILURE=1` retains a failed test sandbox for
+diagnosis when native SBX has not already removed it.
+
+See [cutover evidence](docs/cutover.md) for the tested matrix and remaining authentication checks.
+
+There are no harness directories, template tar exports, per-agent rebuild commands or compatibility
+layers. Git history is the archive. Add an agent through an official workload, an environment file
+and the launcher matrix; keep shared behavior in `mixins/dev`.
