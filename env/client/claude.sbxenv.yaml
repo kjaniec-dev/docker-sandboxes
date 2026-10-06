@@ -13,7 +13,8 @@ args:
 
 kits:
   - ../../workloads/claude-dev
-  - docker/sbx-kit-claude-mixin:latest
+  # Claude 2.1.285: latest uses agent-context.directory, unsupported by SBX 0.46/0.47.
+  - docker/sbx-kit-claude-mixin@sha256:52a51a584b3d8b448838b813053b1f62921950a73ddc5eec218e9cbac8890a90
   - ../../mixins/vertex
 
 env:

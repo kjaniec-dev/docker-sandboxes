@@ -171,6 +171,11 @@ collide with SBX 0.46 built-ins. Official agent mixins still supply their binari
 provider egress and gateway hooks. Prefer the official standalone workloads once that collision
 is resolved. Podman Desktop needs no custom SBX backend integration.
 
+Both Claude profiles pin the official Claude 2.1.285 mixin by digest. The `latest` kit published
+on 2026-10-06 adds `agent-context.directory`, which SBX 0.46.0 and 0.47.0 reject as an unknown field.
+Update the pin only after the replacement passes native validation and the Claude smoke test
+on the supported SBX version.
+
 ## Verification
 
 Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX.
