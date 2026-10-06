@@ -9,6 +9,7 @@ Use the same development workflow regardless of the active coding agent:
 - Use **Playwright CLI** for browser, UI and accessibility validation when a runnable frontend exists.
 - Prefer project-local package-manager, formatter, linter, build and test versions over globally installed convenience tools.
 - Run the project-relevant tests, linting and formatting before reporting completion.
+- On ARM64, do not rely on bundled or static `rg` binaries (for example the one shipped with an agent) that assume 4 KiB pages; they crash with `<jemalloc>: Unsupported system page size` on 16 KiB kernels. Use the distro-provided `rg` from `PATH`.
 
 ### Git and worktrees
 

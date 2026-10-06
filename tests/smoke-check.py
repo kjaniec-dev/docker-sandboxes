@@ -183,6 +183,10 @@ def main():
                  ("mvn", "--version"), ("gradle", "--version"), ("docker", "compose", "version"),
                  (command_name, "--help")):
         run(argv)
+    # jemalloc-based rg builds crash when the kernel page size differs from the build (4K vs 16K on ARM64).
+    run(["getconf", "PAGE_SIZE"])
+    run(["rg", "--version"])
+    run(["rg", "--files"])
     check(re.match(r"(?:openjdk|java) 25(?:[. ]|$)", run(["java", "--version"])), "Java 25 required")
     check(re.match(r"javac 25(?:[. ]|$)", run(["javac", "--version"])), "javac 25 required")
     browser = '/opt/sbx-dev/npm/lib/node_modules/@playwright/cli/node_modules/playwright'
