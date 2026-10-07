@@ -6,7 +6,8 @@ args:
 
 kits:
   - ../../workloads/opencode-dev
-  - docker/sbx-kit-opencode-mixin:latest
+  # OpenCode 1.18.33, verified with SBX 0.46/0.47.
+  - docker/sbx-kit-opencode-mixin@sha256:0833c7531999fc02e0f941f61952bc437d1e4138c9dab35fe6e871646f3ebeee
 
 env:
   SBX_AGENT_KIND: opencode
