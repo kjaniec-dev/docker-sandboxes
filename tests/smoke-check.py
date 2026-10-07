@@ -173,7 +173,15 @@ def check_gateway_merge_guard(path, key):
 def main():
     agent, workspace = sys.argv[1:]
     os.chdir(workspace)
-    command_name = "agy" if agent == "antigravity" else agent
+    if agent == "claude" and os.environ.get("CLAUDE_CODE_USE_VERTEX") == "1":
+        check(os.environ.get("CLAUDE_CODE_SKIP_VERTEX_AUTH") == "1", "Vertex must use host authentication")
+        check(not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"), "Unexpected sandbox ADC override")
+        check(not (Path.home() / ".config/gcloud/application_default_credentials.json").exists(),
+              "ADC must remain host-only")
+        check(re.fullmatch(r"sbx-cs-[A-Za-z0-9_-]+", os.environ.get("ANTHROPIC_AUTH_TOKEN", "")),
+              "Vertex environment must contain only the native placeholder")
+        print("smoke-check: host-only Vertex authentication and placeholder passed")
+    command_name ="agy" if agent == "antigravity" else agent
     for tool in (command_name, "git", "gh", "curl", "wget", "ssh", "rg", "fd", "jq", "yq", "fzf",
                  "make", "just", "shellcheck", "shfmt", "docker", "node", "npm", "corepack", "pnpm",
                  "python3", "uv", "go", "gopls", "goimports", "golangci-lint", "staticcheck", "govulncheck",
