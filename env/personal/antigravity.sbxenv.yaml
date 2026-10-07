@@ -5,7 +5,8 @@ args:
     default: /home/agent/.gemini/config/skills
 
 kits:
-  - docker/sbx-kit-antigravity:latest
+  # Pin the SBX 0.46/0.47-compatible official kit; the CLI can still self-update.
+  - docker/sbx-kit-antigravity@sha256:0291a567663d1455ce024d83a974c8949ebbd3ac5d14870c564bbde0ae751ca9
 
 env:
   SBX_AGENT_KIND: antigravity

@@ -5,7 +5,8 @@ args:
     default: /home/agent/.junie/skills
 
 kits:
-  - docker/sbx-kit-junie:latest
+  # Junie 26.9.21 (3294.5), verified with SBX 0.46/0.47.
+  - docker/sbx-kit-junie@sha256:60a13b2d1b3271fccf57c39ac73ef9973e4191093852eacd3a9edbe6a623582b
   - source: ../../workloads/junie-dev
 
 env:
