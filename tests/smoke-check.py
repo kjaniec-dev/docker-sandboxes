@@ -181,7 +181,7 @@ def main():
         check(re.fullmatch(r"sbx-cs-[A-Za-z0-9_-]+", os.environ.get("ANTHROPIC_AUTH_TOKEN", "")),
               "Vertex environment must contain only the native placeholder")
         print("smoke-check: host-only Vertex authentication and placeholder passed")
-    command_name ="agy" if agent == "antigravity" else agent
+    command_name = "agy" if agent == "antigravity" else agent
     for tool in (command_name, "git", "gh", "curl", "wget", "ssh", "rg", "fd", "jq", "yq", "fzf",
                  "make", "just", "shellcheck", "shfmt", "docker", "node", "npm", "corepack", "pnpm",
                  "python3", "uv", "go", "gopls", "goimports", "golangci-lint", "staticcheck", "govulncheck",
