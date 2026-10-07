@@ -5,7 +5,8 @@ args:
     default: /home/agent/.agents/skills
 
 kits:
-  - docker/sbx-kit-codex:latest
+  # Codex 0.159.2: latest uses agent-context.directory, unsupported by SBX 0.46/0.47.
+  - docker/sbx-kit-codex@sha256:d66cea23a0bea94c950e787beb6d7b1208c19b9dcc4f2ce937f89009b9427cc4
 
 env:
   SBX_AGENT_KIND: codex

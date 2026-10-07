@@ -5,7 +5,8 @@ args:
     default: /home/agent/.copilot/skills
 
 kits:
-  - docker/sbx-kit-copilot:latest
+  # Copilot 1.0.86, verified with SBX 0.46/0.47.
+  - docker/sbx-kit-copilot@sha256:a75b185761a3c438c143fed0ee03d46aee7f8cc5b7f31816815bf10e97d8a886
 
 env:
   SBX_AGENT_KIND: copilot

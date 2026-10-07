@@ -144,3 +144,22 @@ Validation passed 40 behavioral tests, five native kit inspections and all seven
 plans. Full authenticated client Claude smoke passed fresh, stop/start and delete/recreate,
 preserving default-model behavior and ADC access with the new override. Disposable test sandboxes
 were removed; the user's existing sandboxes were preserved.
+
+## Official kit pins, 2026-10-07
+
+SBX 0.47.0 rejected `docker/sbx-kit-codex:latest` with the same unknown
+`agent-context.directory` field as the latest Claude mixin. The other four floating official kit
+references still parsed successfully. All environments now use fixed official OCI digests:
+the existing Claude 2.1.285 pin, Codex 0.159.2, Antigravity kit 1.0.0, Junie 26.9.21,
+OpenCode 1.18.33 and Copilot 1.0.86. No official descriptor was copied or modified.
+
+Full `tests/validate.sh` passed on SBX 0.47.0: 40 behavior tests, native local kit builds and all
+seven environment plans. Validation used `env -u CODEX_HOME` because the host's exported
+Codex home otherwise overrides the adapter tests' temporary fixtures.
+
+The fresh Codex smoke initially rejected its working distro `/usr/bin/rg` solely because the
+check required the shared wrapper path. Both known distro entrypoints are now accepted;
+the actual `rg --version` and `rg --files` probes remain, including on the verified 16 KiB ARM64
+kernel. The final Codex smoke passed tooling, Chromium, native skills/context, Serena, Context7
+and fresh/stop-start/delete-recreate stages. Model authentication was not checked in this run.
+The 40 offline tests passed again after the smoke assertion correction. Test sandboxes were removed.

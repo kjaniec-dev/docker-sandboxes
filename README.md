@@ -173,10 +173,14 @@ collide with SBX 0.46 built-ins. Official agent mixins still supply their binari
 provider egress and gateway hooks. Prefer the official standalone workloads once that collision
 is resolved. Podman Desktop needs no custom SBX backend integration.
 
-Both Claude profiles pin the official Claude 2.1.285 mixin by digest. The `latest` kit published
-on 2026-10-06 adds `agent-context.directory`, which SBX 0.46.0 and 0.47.0 reject as an unknown field.
-Update the pin only after the replacement passes native validation and the Claude smoke test
-on the supported SBX version.
+All seven environments pin their official workload or agent mixin by digest. Claude 2.1.285 and
+Codex 0.159.2 use versions preceding the incompatible `latest` descriptors: both current `latest`
+kits add `agent-context.directory`, which SBX 0.46.0 and 0.47.0 reject as an unknown field.
+Antigravity, Junie 26.9.21, OpenCode 1.18.33 and Copilot 1.0.86 also use fixed digests to prevent
+unreviewed descriptor changes on the next launch. Antigravity's CLI can still self-update;
+a kit digest fixes the published artifact, not a CLI's own update behavior.
+Update a pin only after the replacement passes `tests/validate.sh` and that agent's smoke test
+on the supported SBX version. Do not patch or copy official descriptors to remove unknown fields.
 
 ## Verification
 

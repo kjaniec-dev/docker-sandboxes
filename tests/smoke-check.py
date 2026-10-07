@@ -193,7 +193,9 @@ def main():
         run(argv)
     # jemalloc-based rg builds crash when the kernel page size differs from the build (4K vs 16K on ARM64).
     run(["getconf", "PAGE_SIZE"])
-    check(shutil.which("rg") == "/opt/sbx-dev/bin/rg", f"Unexpected ripgrep: {shutil.which('rg')}")
+    # Standalone workloads can resolve their distro rg before the shared mixin wrapper.
+    check(shutil.which("rg") in ("/opt/sbx-dev/bin/rg", "/usr/bin/rg"),
+          f"Unexpected ripgrep: {shutil.which('rg')}")
     run(["rg", "--version"])
     run(["rg", "--files"])
     check(re.match(r"(?:openjdk|java) 25(?:[. ]|$)", run(["java", "--version"])), "Java 25 required")
