@@ -68,6 +68,11 @@ check() {
     check_args=(env exec -i --name "$name" --env-arg "workspace=$repo"
       --env "JUNIE_API_KEY=$junie_placeholder" "${files[@]}" --)
   fi
+  local vertex_placeholder=""
+  if [[ "$profile:$agent" == client:claude ]]; then
+    vertex_placeholder="$(python3 "$ROOT/workloads/claude-dev/token-placeholder.py" "$name" "$CLOUD_ML_REGION")"
+    check_args=(env exec -i "${args[@]}" --env "ANTHROPIC_AUTH_TOKEN=$vertex_placeholder" "${files[@]}" --)
+  fi
   if ! sbx "${check_args[@]}" /opt/sbx-dev/serena/bin/python - "$agent" "$repo" \
     < "$ROOT/tests/smoke-check.py" >"$logs/$stage-check.log" 2>&1; then
     echo "smoke: $stage infrastructure check failed (logs: $logs)" >&2
@@ -79,7 +84,11 @@ check() {
     prompt="Calculate $left + $right. Reply with only the decimal answer. Do not use tools."
     case "$agent" in
       codex) model_args=(codex exec --json --ephemeral "$prompt") ;;
-      claude) model_args=(claude --dangerously-skip-permissions -p --output-format json "$prompt") ;;
+      claude)
+        if [[ "$profile" == client ]]; then
+          exec_args=(env exec "${args[@]}" --env "ANTHROPIC_AUTH_TOKEN=$vertex_placeholder" "${files[@]}" --)
+        fi
+        model_args=(claude --dangerously-skip-permissions -p --output-format json "$prompt") ;;
       opencode) model_args=(opencode run --format json "$prompt") ;;
       antigravity) model_args=(agy -p "$prompt" --output-format json) ;;
       junie)

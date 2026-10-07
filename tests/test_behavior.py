@@ -36,7 +36,12 @@ if args == ["version"]:
 elif args[:2] == ["env", "run"]:
     sys.exit(int(os.environ.get("SBX_TEST_ENV_EXIT", "0")))
 elif args[:3] == ["secret", "ls", "--sandbox"]:
-    print('{"custom_secrets": []}')
+    entries = json.loads(os.environ.get("SBX_TEST_CUSTOM_SECRETS", json.dumps([{
+        "scope": args[3], "env": "ANTHROPIC_AUTH_TOKEN", "kind": "command",
+        "targets": ["aiplatform.eu.rep.googleapis.com", "europe-west1-aiplatform.googleapis.com", "us-east5-aiplatform.googleapis.com"],
+        "placeholder": "sbx-cs-vertex-test",
+    }])))
+    print(json.dumps({"custom_secrets": entries}))
 elif args[:3] == ["secret", "ls", "--global"]:
     print('{"custom_secrets": [{"env": "JUNIE_API_KEY", "targets": ["junie.jetbrains.com", "ingrazzio-cloud-prod.labs.jb.gg"], "placeholder": "sbx-cs-test"}]}')
 elif args[:2] == ["env", "exec"]:
@@ -234,11 +239,31 @@ elif args[:1] != ["run"]:
                     "--env-arg", "workspace=" + str(self.repo),
                     "--env-arg", "vertexProject=test-project",
                     "--env-arg", "vertexRegion=eu",
+                    "--env", "ANTHROPIC_AUTH_TOKEN=sbx-cs-vertex-test",
                     str(ROOT / "env/client/claude.sbxenv.yaml"),
                     str(ROOT / "env/common.sbxenv.yaml"), str(overlay),
                     "--", "claude", "--dangerously-skip-permissions", *args,
                 ])
                 self.assertFalse(any(call["argv"][:1] == ["run"] for call in self.calls()))
+
+    def test_client_claude_missing_scoped_secret_never_executes(self):
+        result = self.launch("claude", env={
+            "SBX_PROFILE": "client", "ANTHROPIC_VERTEX_PROJECT_ID": "test-project",
+            "CLOUD_ML_REGION": "eu", "SBX_TEST_CUSTOM_SECRETS": "[]",
+        })
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Vertex", result.stderr)
+        self.assertFalse(any(call["argv"][:2] == ["env", "exec"] for call in self.calls()))
+        self.assertFalse(any(call["argv"][:3] == ["secret", "ls", "--global"] for call in self.calls()))
+
+    def test_vertex_placeholder_is_not_used_for_personal_claude_or_client_copilot(self):
+        for agent, profile in (("claude", "personal"), ("copilot", "client")):
+            with self.subTest(agent=agent, profile=profile):
+                self.reset_log()
+                result = self.launch(agent, env={"SBX_PROFILE": profile})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(any(call["argv"][:2] == ["secret", "ls"] for call in self.calls()))
+                self.assertNotIn("ANTHROPIC_AUTH_TOKEN", self.log.read_text())
 
     def test_client_claude_environment_failure_never_executes(self):
         result = self.launch("claude", env={

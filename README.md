@@ -76,8 +76,10 @@ SBX_PROFILE=client claude-sbx
 ```
 
 Client Claude requires host `ANTHROPIC_VERTEX_PROJECT_ID` and `CLOUD_ML_REGION`.
-Keep its approved ADC/WIF configuration in the machine-local overlay; see
+Keep its approved ADC/WIF or host-only secret-proxy settings in the machine-local overlay; see
 [client Vertex configuration](docs/client-vertex.md) for credential visibility and runtime verification.
+Client Claude uses host-only token resolution and a sandbox-scoped native placeholder; ADC is not
+mounted. The flow applies only to client Claude, not personal agents or client Copilot.
 
 ## Native lifecycle and authentication
 
