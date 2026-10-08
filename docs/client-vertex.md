@@ -21,6 +21,17 @@ The launcher merges this native environment overlay after the committed client a
 Use only the approved credential flow. Host-only token injection below reuses the existing host
 ADC; it does not introduce a service-account key or a new login.
 
+## First-time setup
+
+Client Claude needs the machine-local overlay: its host-only token registration runs commands on
+the host, so it must stay outside any directory a sandbox can modify, and it holds host paths.
+The README's [Client profile setup](../README.md#client-profile-setup-vertex-claude) lists every
+host input in order: ADC login, the three exported variables and the overlay copied from
+`env/client/client.sbxenv.yaml.example`. Afterwards, check the approved Vertex hosts in the
+overlay and run `SBX_PROFILE=client claude-sbx`, approving the plan that includes the host command.
+Without the overlay, `claude-sbx` stops with `Store exactly one sandbox-scoped Vertex command
+secret`.
+
 ## Model-specific regions
 
 Keep the approved default region in `CLOUD_ML_REGION`. If Haiku 4.5 needs `europe-west1` while
@@ -43,6 +54,27 @@ region, investigate that project's regional model quota rather than treating ret
 
 On 2026-10-06, a completed Haiku 4.5 response was verified through the merged native environment
 with `VERTEX_REGION_CLAUDE_HAIKU_4_5=europe-west1` and `CLOUD_ML_REGION=eu`.
+
+## Model pins
+
+The host's `~/.claude/settings.json` is not visible in the sandbox, so model pins set there do not
+apply. Pin them in the same machine-local overlay, for example Haiku 5.5:
+
+```yaml
+env:
+  ANTHROPIC_DEFAULT_HAIKU_MODEL: claude-haiku-5-5
+```
+
+Relaunch `SBX_PROFILE=client claude-sbx` to apply it. On 2026-10-08, `claude --model haiku`
+through the merged native environment (Claude Code 2.1.294 in the existing sandbox) completed a
+response with `claude-haiku-5-5` using the existing `eu` and `europe-west1` secret hosts; no
+network or secret change was needed.
+
+Do not use Claude's `/setup-vertex` or first-run Vertex wizard in the sandbox. It verifies
+credentials inside the sandbox, where ADC is host-only by design, so verification always fails.
+"Save anyway" would only write the same values into that sandbox's `~/.claude/settings.json`.
+Requests do not need the wizard: `CLAUDE_CODE_SKIP_VERTEX_AUTH=1` and the placeholder token
+authenticate through the host proxy.
 
 ## Host-only ADC through the native secret proxy
 
@@ -145,10 +177,12 @@ network checks were explicitly denied, including old allow rules retained by exi
 They were stopped again after verification.
 
 `tests/validate.sh` passed all 52 tests, native kit checks and seven environment plans.
-The current full `tests/smoke.sh claude` run passed its new host-only authentication/placeholder
-check but stopped at the unrelated infrastructure assertion `Unexpected ripgrep: /usr/bin/rg`
-before model checks. It is not a passing full smoke result; its disposable sandbox and scoped
-secret were removed.
+On 2026-10-08, with SBX 0.47.0, `SBX_PROFILE=client SBX_SMOKE_MODEL=1 tests/smoke.sh claude`
+passed the fresh, stop/start and delete/recreate stages, including the host-only
+authentication/placeholder check and a completed authenticated model response. An earlier run
+stopped at `Unexpected ripgrep: /usr/bin/rg`: the base image's distro `rg` precedes the shared mixin
+`rg` on `PATH`, so the assertion accepts either, and still rejects an agent-vendored `rg`.
+Its disposable sandboxes and scoped secrets were removed.
 
 ## Migrating an existing client Claude sandbox
 

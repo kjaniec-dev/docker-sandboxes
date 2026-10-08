@@ -1,0 +1,30 @@
+# Template for the machine-local client overlay. The README's "Client profile setup" copies it to
+#   ${XDG_CONFIG_HOME:-$HOME/.config}/docker-sandboxes/client.sbxenv.yaml
+# and fills in the two host paths below (your home directory and the gcloud executable).
+# Do not edit this template for one machine; adjust the copy, including the Vertex hosts.
+# See docs/client-vertex.md.
+#
+# The real file stays outside the repository on purpose: its postCreate hook runs on the host with
+# your privileges, so it must not live in a directory a sandbox can modify, and it holds host paths.
+schemaVersion: "1"
+
+# Optional model settings (uncomment the `env:` key together with the entries you need):
+# env:
+#   VERTEX_REGION_CLAUDE_HAIKU_4_5: europe-west1
+#   ANTHROPIC_DEFAULT_HAIKU_MODEL: claude-haiku-5-5
+
+lifecycle:
+  postCreate:
+    - name: Register host-only Vertex authentication for client Claude
+      command: |
+        if [ "$SBX_AGENT" = claude-dev ]; then
+          sbx secret set-custom \
+            --sandbox "$SBX_SANDBOX_NAME" \
+            --host aiplatform.eu.rep.googleapis.com \
+            --host europe-west1-aiplatform.googleapis.com \
+            --env ANTHROPIC_AUTH_TOKEN \
+            --command '/usr/bin/env CLOUDSDK_CONFIG=/Users/YOUR_USER/.config/gcloud /opt/homebrew/bin/gcloud auth application-default print-access-token' \
+            --refresh 45m
+          sbx policy deny network --sandbox "$SBX_SANDBOX_NAME" \
+            'oauth2.googleapis.com,sts.googleapis.com,iamcredentials.googleapis.com,cloudresourcemanager.googleapis.com,serviceusage.googleapis.com'
+        fi
