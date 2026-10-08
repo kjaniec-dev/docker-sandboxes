@@ -43,6 +43,35 @@ for command in claude-sbx codex-sbx opencode-sbx agy-sbx junie-sbx copilot-sbx; 
 done
 ```
 
+## Client profile setup (Vertex Claude)
+
+Client Claude needs a few host inputs before the first launch. Without them `claude-sbx` stops at
+the first missing one. Do this once per machine, in order:
+
+```bash
+# 1. Host-only Google credentials; never copied into a sandbox.
+gcloud auth application-default login
+
+# 2. Profile and Vertex settings for every new shell (use your approved project and region).
+cat >> ~/.zshrc <<'EOF'
+export SBX_PROFILE=client
+export ANTHROPIC_VERTEX_PROJECT_ID='<approved-project>'
+export CLOUD_ML_REGION='<approved-region>'   # for example eu
+EOF
+source ~/.zshrc
+
+# 3. Machine-local overlay from the template, with your gcloud and home paths filled in.
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/docker-sandboxes"; mkdir -p "$cfg"
+[ -e "$cfg/client.sbxenv.yaml" ] || sed -e "s#/Users/YOUR_USER#$HOME#" \
+  -e "s#/opt/homebrew/bin/gcloud#$(command -v gcloud)#" \
+  env/client/client.sbxenv.yaml.example > "$cfg/client.sbxenv.yaml"
+```
+
+Then launch `claude-sbx` from a project checkout and approve the plan, which includes a host
+command. The overlay stays outside the repository because that command runs on your host and
+must not live where a sandbox can modify it. Adjust the Vertex hosts in the overlay to your
+approved regions; see [client Vertex configuration](docs/client-vertex.md).
+
 ## Launch an agent
 
 Run inside the project's main Git checkout. Add `.worktrees/` to its Git ignore rules first.
@@ -75,9 +104,9 @@ SBX_PROFILE=client copilot-sbx
 SBX_PROFILE=client claude-sbx
 ```
 
-Client Claude requires host `ANTHROPIC_VERTEX_PROJECT_ID` and `CLOUD_ML_REGION`.
-Keep its approved ADC/WIF or host-only secret-proxy settings in the machine-local overlay; see
-[client Vertex configuration](docs/client-vertex.md) for credential visibility and runtime verification.
+Client Claude requires the host inputs in [Client profile setup](#client-profile-setup-vertex-claude);
+see [client Vertex configuration](docs/client-vertex.md) for credential visibility and runtime
+verification.
 Client Claude uses host-only token resolution and a sandbox-scoped native placeholder; ADC is not
 mounted. The flow applies only to client Claude, not personal agents or client Copilot.
 
