@@ -1,6 +1,6 @@
 # Repository instructions
 
-This repository targets Docker Sandboxes 0.46+ and Sandbox Kit V3 only.
+This repository targets Docker Sandboxes 0.47.0+ and Sandbox Kit V3 only.
 
 Architecture rules:
 
