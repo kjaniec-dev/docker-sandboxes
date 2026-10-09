@@ -79,8 +79,10 @@ sandboxes without provisioning them again. Pre-rewrite sandboxes must be recreat
 composition; the launcher does not migrate or delete them automatically.
 
 Final review deferred one minor test improvement: asserting that a sandbox-local marker survives
-stop/start and disappears after recreation. The current smoke checks runtime behavior at every stage,
-but does not independently assert persistence of arbitrary sandbox-local state.
+stop/start and disappears after recreation. At cutover, smoke checked runtime behavior at every stage,
+but did not independently assert persistence of arbitrary sandbox-local state.
+This deferred check is now implemented in `tests/smoke-check.py`; native runtime verification of
+the marker is still pending.
 
 ## Junie client correction, 2026-10-06
 

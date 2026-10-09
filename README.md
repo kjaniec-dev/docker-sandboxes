@@ -217,6 +217,7 @@ on the supported SBX version. Do not patch or copy official descriptors to remov
 
 Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX 0.47.0+,
 a running daemon and a Docker sign-in. The repository's `--offline` mode skips native checks.
+GitHub Actions runs offline validation on every pull request and push to `main`.
 
 ```bash
 ./tests/validate.sh --offline  # launcher/config/model-response behavior
@@ -227,8 +228,9 @@ SBX_PROFILE=client ./tests/smoke.sh copilot
 ```
 
 Smoke tests create uniquely named disposable repositories and sandboxes, test fresh launch,
-stop/start and delete/recreate, then remove their sandbox and workspace. Logs remain at the printed
-location. A failed model request cannot count as a passing result. Default smoke results explicitly
+stop/start and delete/recreate, then remove their sandbox and workspace. A marker in the agent's
+sandbox-local home must survive stop/start and disappear after delete/recreate. Logs remain at the
+printed location. A failed model request cannot count as a passing result. Default smoke results explicitly
 say authentication was not checked. `SBX_SMOKE_KEEP_ON_FAILURE=1` retains a failed test sandbox for
 diagnosis when native SBX has not already removed it.
 

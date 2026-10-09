@@ -73,7 +73,7 @@ check() {
     vertex_placeholder="$(python3 "$ROOT/workloads/claude-dev/token-placeholder.py" "$name" "$CLOUD_ML_REGION")"
     check_args=(env exec -i "${args[@]}" --env "ANTHROPIC_AUTH_TOKEN=$vertex_placeholder" "${files[@]}" --)
   fi
-  if ! sbx "${check_args[@]}" /opt/sbx-dev/serena/bin/python - "$agent" "$repo" \
+  if ! sbx "${check_args[@]}" /opt/sbx-dev/serena/bin/python - "$agent" "$repo" "$stage" "$name" \
     < "$ROOT/tests/smoke-check.py" >"$logs/$stage-check.log" 2>&1; then
     echo "smoke: $stage infrastructure check failed (logs: $logs)" >&2
     return 1
