@@ -1,6 +1,8 @@
 # Docker Sandboxes — SBX V3
 
-Development environments for Docker Sandboxes **0.46.0+** and Sandbox Kit **V3**.
+Development environments for Docker Sandboxes **0.47.0+** and Sandbox Kit **V3**.
+
+SBX 0.47.0 is the minimum supported release for its OAuth, credential masking and proxy security fixes.
 
 Personal: Claude Code, Codex, OpenCode, Antigravity and Junie.
 Client: Claude Code through Vertex AI and GitHub Copilot CLI.
@@ -213,7 +215,8 @@ on the supported SBX version. Do not patch or copy official descriptors to remov
 
 ## Verification
 
-Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX.
+Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX 0.47.0+,
+a running daemon and a Docker sign-in. The repository's `--offline` mode skips native checks.
 
 ```bash
 ./tests/validate.sh --offline  # launcher/config/model-response behavior

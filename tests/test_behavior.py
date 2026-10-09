@@ -32,7 +32,7 @@ args = sys.argv[1:]
 with open(os.environ["SBX_TEST_LOG"], "a") as stream:
     stream.write(json.dumps({"argv": args, "builder": os.environ.get("SBX_KIT_BUILDER")}) + "\\n")
 if args == ["version"]:
-    print(os.environ.get("SBX_TEST_VERSION", "sbx version: v0.46.0 testhash"))
+    print(os.environ.get("SBX_TEST_VERSION", "sbx version: v0.47.0 testhash"))
 elif args[:2] == ["env", "run"]:
     sys.exit(int(os.environ.get("SBX_TEST_ENV_EXIT", "0")))
 elif args[:3] == ["secret", "ls", "--sandbox"]:
@@ -79,7 +79,7 @@ elif args[:1] != ["run"]:
         self.assertFalse(any(call["argv"][:2] == ["env", "run"] or call["argv"][:1] == ["run"] for call in self.calls()))
 
     def test_supported_version_floor_and_newer_releases(self):
-        for version in ("v0.46.0", "v0.46.1", "v0.47.0", "v1.0.0", "v0.46.0+build.5"):
+        for version in ("v0.47.0", "v0.47.1", "v0.48.0", "v1.0.0", "v0.47.0+build.5"):
             with self.subTest(version=version):
                 self.reset_log()
                 result = self.launch(env={"SBX_TEST_VERSION": "sbx version: " + version + " abc"})
@@ -87,7 +87,7 @@ elif args[:1] != ["run"]:
                 self.assertEqual(self.calls()[0]["argv"], ["version"])
 
     def test_old_malformed_and_floor_prerelease_versions_are_rejected(self):
-        for version in ("sbx version: v0.45.9 abc", "sbx version: v0.46.0-rc.1 abc", "sbx version: v0.46 abc", "junk v0.99.0", "sbx version: v0.046.0 abc", ""):
+        for version in ("sbx version: v0.46.0 abc", "sbx version: v0.46.1 abc", "sbx version: v0.46.99 abc", "sbx version: v0.47.0-rc.1 abc", "sbx version: v0.47 abc", "junk v0.99.0", "sbx version: v0.047.0 abc", ""):
             with self.subTest(version=version):
                 self.reset_log()
                 self.assert_no_launch(self.launch(env={"SBX_TEST_VERSION": version}))
