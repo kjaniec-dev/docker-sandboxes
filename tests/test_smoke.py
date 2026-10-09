@@ -1,11 +1,44 @@
 """Prevent an echoed, unfinished or failed model turn from passing smoke."""
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location("model_response", Path(__file__).with_name("model-response.py"))
 model = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(model)
+
+spec = importlib.util.spec_from_file_location("smoke_check", Path(__file__).with_name("smoke-check.py"))
+smoke = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(smoke)
+
+
+class LifecycleTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.marker = Path(self.tmp.name) / "marker"
+
+    def test_marker_survives_restart_and_is_absent_after_recreation(self):
+        smoke.check_lifecycle("fresh", self.marker, "sandbox-token")
+        self.assertEqual(self.marker.read_text(), "sandbox-token")
+        smoke.check_lifecycle("restarted", self.marker, "sandbox-token")
+        self.marker.unlink()
+        smoke.check_lifecycle("recreated", self.marker, "sandbox-token")
+
+    def test_missing_or_changed_marker_fails_restart(self):
+        for content in (None, "wrong-token"):
+            with self.subTest(content=content):
+                if content is not None:
+                    self.marker.write_text(content)
+                with self.assertRaises(RuntimeError):
+                    smoke.check_lifecycle("restarted", self.marker, "sandbox-token")
+
+    def test_existing_marker_fails_fresh_and_recreated_checks(self):
+        self.marker.write_text("sandbox-token")
+        for stage in ("fresh", "recreated"):
+            with self.subTest(stage=stage), self.assertRaises(RuntimeError):
+                smoke.check_lifecycle(stage, self.marker, "sandbox-token")
 
 
 class ResponseTests(unittest.TestCase):

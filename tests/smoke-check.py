@@ -20,6 +20,18 @@ def check(condition, message):
         raise RuntimeError(message)
 
 
+def check_lifecycle(stage, marker, token):
+    check(stage in ("fresh", "restarted", "recreated"), f"Unknown lifecycle stage: {stage}")
+    if stage == "restarted":
+        check(marker.is_file() and not marker.is_symlink() and marker.read_text() == token,
+              "Sandbox-local marker was lost or changed after restart")
+    else:
+        check(not marker.exists() and not marker.is_symlink(),
+              f"Sandbox-local marker unexpectedly survived into {stage} sandbox")
+        marker.write_text(token)
+    print(f"smoke-check: sandbox-local marker {stage} passed")
+
+
 def run(argv, **kwargs):
     return subprocess.run(argv, check=True, text=True, capture_output=True, timeout=90, **kwargs).stdout
 
@@ -171,8 +183,9 @@ def check_gateway_merge_guard(path, key):
 
 
 def main():
-    agent, workspace = sys.argv[1:]
+    agent, workspace, stage, sandbox = sys.argv[1:]
     os.chdir(workspace)
+    check_lifecycle(stage, Path.home() / ".sbx-smoke-lifecycle", sandbox)
     if agent == "claude" and os.environ.get("CLAUDE_CODE_USE_VERTEX") == "1":
         check(os.environ.get("CLAUDE_CODE_SKIP_VERTEX_AUTH") == "1", "Vertex must use host authentication")
         check(not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"), "Unexpected sandbox ADC override")

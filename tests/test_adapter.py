@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ADAPTER = Path(__file__).resolve().parents[1] / "mixins/dev/configure-agent.py"
 FORMATS = {
@@ -27,8 +28,11 @@ class AdapterTests(unittest.TestCase):
         self.home = Path(self.tmp.name)
 
     def invoke(self, agent, extra=None):
+        env = os.environ.copy()
+        for key in ("CODEX_HOME", "WORKSPACE_DIR"):
+            env.pop(key, None)
         return subprocess.run([sys.executable, str(ADAPTER)], capture_output=True, text=True,
-                              env={**os.environ, "HOME": str(self.home), "SBX_AGENT_KIND": agent,
+                              env={**env, "HOME": str(self.home), "SBX_AGENT_KIND": agent,
                                    "MCP_GATEWAY_URL": "http://gateway.invalid/mcp",
                                    "MCP_SENTINEL_TOKEN_NAME": "test-token", **(extra or {})}, cwd=self.home)
 
@@ -127,6 +131,19 @@ class AdapterTests(unittest.TestCase):
         result = self.invoke("codex")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(path.read_text(), original)
+
+    def test_codex_ignores_inherited_configuration_and_workspace(self):
+        original = ('[mcp_servers.serena]\ncommand = "serena"\n'
+                    'args = ["start-mcp-server", "--context=codex", "--project-from-cwd"]\n')
+        local = self.fixture(".codex/config.toml", original)
+        inherited = self.fixture("inherited-codex/config.toml", "broken = [")
+        with patch.dict(os.environ, {"CODEX_HOME": str(inherited.parent),
+                                    "WORKSPACE_DIR": str(self.home / "inherited-project")}):
+            result = self.invoke("codex")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(local.read_text(), original)
+        self.assertEqual(inherited.read_text(), "broken = [")
+        self.assertFalse((local.parent / "AGENTS.md").is_symlink())
 
     def test_empty_codex_home_uses_agent_home(self):
         original = ('[mcp_servers.serena]\ncommand = "serena"\n'
