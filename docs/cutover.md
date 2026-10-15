@@ -256,3 +256,25 @@ The final inventory contained none of this run's disposable smoke sandboxes. Exi
 sandbox IDs were unchanged. The builder was stopped after testing to release its memory while
 retaining its cache. Existing project sandboxes still need deliberate recreation to receive the
 new pinned kits and native context composition; the update did not recreate them automatically.
+
+## Workload-provided ripgrep, 2026-10-15
+
+The shared dev mixin no longer installs, copies or wraps ripgrep. Workload base images
+supply `/usr/bin/rg`; smoke requires that path and rejects copies under `/opt/sbx-dev`.
+Claude's `USE_BUILTIN_RIPGREP=0` override and the blanket instruction against bundled
+ripgrep were removed after testing the current official Claude 2.1.292 artifact.
+
+A disposable Claude sandbox on SBX 0.48 reported a **16384-byte kernel page size** and
+working workload `/usr/bin/rg` **15.1.0**. An authenticated Claude request with explicit
+`--tools Grep` found the fixture `needle.txt:1:native-ripgrep-probe`, first with
+`USE_BUILTIN_RIPGREP=1`, then with the variable absent. Both returned a successful
+tool result and completed model response; the old page-size crash did not reproduce.
+This verifies the selected kit and machine, not every bundled ripgrep release.
+
+Final `tests/validate.sh` passed **71 regression tests**, **five native kit inspections**
+and **seven environment plans**. All six non-Vertex environments passed infrastructure
+and lifecycle smoke at fresh, stop/start and delete/recreate stages, including the
+workload-ripgrep assertions. These smoke runs did not request model responses; the
+authenticated Claude Grep probes above were separate. Client Claude runtime remains
+excluded. All seven disposable probe/smoke sandboxes were removed, and the native builder
+was stopped again while retaining its cache.
