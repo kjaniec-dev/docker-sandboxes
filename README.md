@@ -205,6 +205,9 @@ It exports tools and their scoped dependencies without replacing the workload's 
 Node or Go runtimes. A broken workload uv/uvx is replaced with the baked working binary only when its
 version probe fails.
 
+Ripgrep comes from each workload's base image (`/usr/bin/rg`); the shared mixin does not
+install or export another copy. Claude uses its default built-in search configuration.
+
 Claude and OpenCode use thin local workloads because their official standalone workload names
 collide with SBX 0.46 built-ins. Official agent mixins still supply their binaries, credentials,
 provider egress and gateway hooks. Prefer the official standalone workloads once that collision

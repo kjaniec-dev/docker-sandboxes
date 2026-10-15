@@ -28,7 +28,7 @@ def main():
     executables = root / "libexec"
     executables.mkdir()
     for name in ("fdfind", "fzf", "just", "shellcheck", "shfmt", "sqlite3", "redis-cli",
-                 "tree", "wget", "ssh", "git-lfs", "zip", "unzip", "make", "gh", "jq", "rg"):
+                 "tree", "wget", "ssh", "git-lfs", "zip", "unzip", "make", "gh", "jq"):
         shutil.copy2(shutil.which(name), executables / name)
     shutil.copy2(next(Path("/usr/lib/postgresql").glob("*/bin/psql")), executables / "psql")
     for path in list(root.rglob("*")):
