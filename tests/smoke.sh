@@ -31,16 +31,23 @@ if [[ "$profile:$agent" == client:claude ]]; then
 fi
 owned=false
 cleanup() {
-  local status=$?
+  local status=$? inventory
   trap - EXIT
+  if [[ "$owned" == unconfirmed ]]; then
+    echo "smoke: sandbox removal not confirmed; retain $name and workspace $repo (logs: $logs)" >&2
+    exit 1
+  fi
   if [[ "$status" != 0 && "$owned" == true && "${SBX_SMOKE_KEEP_ON_FAILURE:-0}" == 1 ]]; then
     echo "smoke: debug sandbox retained: $name workspace=$repo logs=$logs" >&2
     exit "$status"
   fi
   if [[ "$owned" == true ]]; then
     if ! sbx env rm "${files[@]}" "${args[@]}" --force >"$logs/cleanup.log" 2>&1; then
-      echo "smoke: cleanup failed; retain $name and workspace $repo (logs: $logs)" >&2
-      exit 1
+      if ! inventory="$(sbx ls --json 2>"$logs/cleanup-inventory.log")" ||
+         ! python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) and all(isinstance(s,dict) and isinstance(s.get("name"),str) for s in d), "invalid sandbox inventory"; assert not any(s["name"]==sys.argv[1] for s in d), "sandbox still present"' "$name" <<<"$inventory" >>"$logs/cleanup-inventory.log" 2>&1; then
+        echo "smoke: cleanup failed; retain $name and workspace $repo (logs: $logs)" >&2
+        exit 1
+      fi
     fi
   fi
   rm -rf "$repo"
@@ -55,10 +62,10 @@ mkdir "$repo/.worktrees"
 printf 'def smoke_symbol():\n    return 42\n' > "$repo/main.py"
 printf '# Disposable SBX smoke project\n' > "$repo/README.md"
 inventory="$(sbx ls --json)"
-python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d.get("sandboxes"),list), "invalid sandbox inventory"; assert not any(s["name"]==sys.argv[1] for s in d["sandboxes"]), "smoke name occupied"' "$name" <<<"$inventory"
+python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) and all(isinstance(s,dict) and isinstance(s.get("name"),str) for s in d), "invalid sandbox inventory"; assert not any(s["name"]==sys.argv[1] for s in d), "smoke name occupied"' "$name" <<<"$inventory"
 owned=true
 echo "smoke: $profile/$agent sandbox=$name logs=$logs"
-apply() { sbx env run "${files[@]}" "${args[@]}" --detached --auto-approve; }
+apply() { sbx env run "${files[@]}" "${args[@]}" --detach --force; }
 check() {
   local stage="$1"
   local -a check_args=(exec -i "$name")
@@ -126,9 +133,9 @@ sbx stop "$name" >"$logs/stop.log" 2>&1
 apply >"$logs/restart.log" 2>&1
 check restarted
 sbx env rm "${files[@]}" "${args[@]}" --force >"$logs/remove.log" 2>&1
-owned=false
+owned=unconfirmed
 inventory="$(sbx ls --json)"
-python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d.get("sandboxes"),list); assert not any(s["name"]==sys.argv[1] for s in d["sandboxes"]), "removed sandbox still present"' "$name" <<<"$inventory"
+python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) and all(isinstance(s,dict) and isinstance(s.get("name"),str) for s in d), "invalid sandbox inventory"; assert not any(s["name"]==sys.argv[1] for s in d), "removed sandbox still present"' "$name" <<<"$inventory"
 owned=true
 apply >"$logs/recreate.log" 2>&1 || { echo "smoke: recreation failed (logs: $logs)" >&2; exit 1; }
 check recreated

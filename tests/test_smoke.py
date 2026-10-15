@@ -41,6 +41,49 @@ class LifecycleTests(unittest.TestCase):
                 smoke.check_lifecycle(stage, self.marker, "sandbox-token")
 
 
+class ContextTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name) / "home"
+        self.home.mkdir()
+        self.workspace = Path(self.tmp.name) / "workspace/project"
+        self.workspace.mkdir(parents=True)
+
+    def fixture(self, path, content):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+
+    def test_claude_and_codex_use_native_global_context(self):
+        for agent, relative in (("claude", ".claude/CLAUDE.md"), ("codex", ".codex/AGENTS.md")):
+            with self.subTest(agent=agent):
+                self.fixture(self.home / relative, "Read /usr/share/sandbox/kit/dev/dev-context.md\n")
+                smoke.check_context(agent, self.workspace, self.home)
+
+    def test_ancestor_context_cannot_hide_missing_native_context(self):
+        self.fixture(self.workspace.parent / "AGENTS.md", "Read /usr/share/sandbox/kit/dev/dev-context.md\n")
+        for agent in ("claude", "codex"):
+            with self.subTest(agent=agent), self.assertRaises(RuntimeError):
+                smoke.check_context(agent, self.workspace, self.home)
+
+    def test_native_context_must_include_shared_dev_guidance(self):
+        for agent, relative in (("claude", ".claude/CLAUDE.md"), ("codex", ".codex/AGENTS.md")):
+            with self.subTest(agent=agent):
+                self.fixture(self.home / relative, "Official agent context only\n")
+                with self.assertRaises(RuntimeError):
+                    smoke.check_context(agent, self.workspace, self.home)
+
+    def test_remaining_kits_use_composed_ancestor_context(self):
+        context = self.workspace.parent / "AGENTS.md"
+        for agent in ("opencode", "antigravity", "junie", "copilot"):
+            with self.subTest(agent=agent):
+                self.fixture(context, "Official agent context only\n")
+                with self.assertRaises(RuntimeError):
+                    smoke.check_context(agent, self.workspace, self.home)
+                self.fixture(context, "Read /usr/share/sandbox/kit/dev/dev-context.md\n")
+                smoke.check_context(agent, self.workspace, self.home)
+
+
 class ResponseTests(unittest.TestCase):
     def test_codex_requires_completed_nonfailed_turn(self):
         answer = '{"type":"item.completed","item":{"type":"agent_message","text":"42"}}\n'

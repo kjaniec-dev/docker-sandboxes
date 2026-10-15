@@ -31,8 +31,11 @@ class LauncherTests(unittest.TestCase):
 args = sys.argv[1:]
 with open(os.environ["SBX_TEST_LOG"], "a") as stream:
     stream.write(json.dumps({"argv": args, "builder": os.environ.get("SBX_KIT_BUILDER")}) + "\\n")
-if args == ["version"]:
-    print(os.environ.get("SBX_TEST_VERSION", "sbx version: v0.47.0 testhash"))
+if args == ["version", "--json"]:
+    print(os.environ.get("SBX_TEST_VERSION", json.dumps({
+        "client": {"version": "v0.48.0", "revision": "testhash", "build_tags": "cloud"},
+        "server": {"state": "unavailable", "error": "sandbox daemon not running"},
+    })))
 elif args[:2] == ["env", "run"]:
     sys.exit(int(os.environ.get("SBX_TEST_ENV_EXIT", "0")))
 elif args[:3] == ["secret", "ls", "--sandbox"]:
@@ -79,18 +82,39 @@ elif args[:1] != ["run"]:
         self.assertFalse(any(call["argv"][:2] == ["env", "run"] or call["argv"][:1] == ["run"] for call in self.calls()))
 
     def test_supported_version_floor_and_newer_releases(self):
-        for version in ("v0.47.0", "v0.47.1", "v0.48.0", "v1.0.0", "v0.47.0+build.5"):
+        for version in ("v0.48.0", "v0.48.1", "v0.49.0", "v1.0.0", "v0.48.0+build.5"):
             with self.subTest(version=version):
                 self.reset_log()
-                result = self.launch(env={"SBX_TEST_VERSION": "sbx version: " + version + " abc"})
+                result = self.launch(env={"SBX_TEST_VERSION": json.dumps({
+                    "client": {"version": version, "revision": "testhash", "build_tags": "cloud"},
+                    "server": {"state": "unavailable", "error": "sandbox daemon not running"},
+                })})
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(self.calls()[0]["argv"], ["version"])
+                self.assertEqual(self.calls()[0]["argv"], ["version", "--json"])
 
     def test_old_malformed_and_floor_prerelease_versions_are_rejected(self):
-        for version in ("sbx version: v0.46.0 abc", "sbx version: v0.46.1 abc", "sbx version: v0.46.99 abc", "sbx version: v0.47.0-rc.1 abc", "sbx version: v0.47 abc", "junk v0.99.0", "sbx version: v0.047.0 abc", ""):
+        for version in ("v0.46.99", "v0.47.0", "v0.47.9", "v0.48.0-rc.1", "v0.48", "v0.048.0", ""):
             with self.subTest(version=version):
                 self.reset_log()
-                self.assert_no_launch(self.launch(env={"SBX_TEST_VERSION": version}))
+                self.assert_no_launch(self.launch(env={"SBX_TEST_VERSION": json.dumps({
+                    "client": {"version": version, "revision": "testhash", "build_tags": "cloud"},
+                    "server": {"state": "unavailable", "error": "sandbox daemon not running"},
+                })}))
+
+    def test_malformed_version_inventory_is_rejected(self):
+        for inventory in ('junk v0.99.0', '', '[]', '{}', '{"client": null}', '{"client": {}}', '{"client": {"version": 48}}'):
+            with self.subTest(inventory=inventory):
+                self.reset_log()
+                self.assert_no_launch(self.launch(env={"SBX_TEST_VERSION": inventory}))
+
+    def test_environment_provisioning_detaches_with_interactive_approval(self):
+        result = self.launch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = self.operation(["env", "run"])["argv"]
+        self.assertIn("--detach", argv)
+        self.assertNotIn("--detached", argv)
+        self.assertNotIn("--force", argv)
+        self.assertNotIn("--auto-approve", argv)
 
     def test_personal_and_client_agent_matrix(self):
         for profile, supported in (("personal", {"claude", "codex", "opencode", "antigravity", "junie"}), ("client", {"claude", "copilot"})):

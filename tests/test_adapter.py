@@ -153,17 +153,30 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(path.read_text(), original)
 
-    def test_codex_reads_native_context_through_global_discovery(self):
+    def test_codex_preserves_native_global_context(self):
         workspace = self.home / "project"
         workspace.mkdir()
-        self.fixture("AGENTS.md", "Read /usr/share/sandbox/kit/dev/dev-context.md\n")
+        context = self.fixture(".codex/AGENTS.md", "Read /usr/share/sandbox/kit/dev/dev-context.md\n")
+        before = context.read_bytes()
         original = ('[mcp_servers.serena]\ncommand = "serena"\n'
                     'args = ["start-mcp-server", "--context=codex", "--project-from-cwd"]\n')
         self.fixture(".codex/config.toml", original)
         result = self.invoke("codex", {"WORKSPACE_DIR": str(workspace)})
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue((self.home / ".codex/AGENTS.md").is_symlink())
-        self.assertEqual((self.home / ".codex/AGENTS.md").resolve(), (self.home / "AGENTS.md").resolve())
+        self.assertFalse(context.is_symlink())
+        self.assertEqual(context.read_bytes(), before)
+
+    def test_codex_leaves_native_context_creation_to_sbx(self):
+        workspace = self.home / "project"
+        workspace.mkdir()
+        self.fixture("AGENTS.md", "Old ancestor context\n")
+        self.fixture(".codex/config.toml", '[mcp_servers.serena]\ncommand = "serena"\n'
+                     'args = ["start-mcp-server", "--context=codex", "--project-from-cwd"]\n')
+        result = self.invoke("codex", {"WORKSPACE_DIR": str(workspace)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        context = self.home / ".codex/AGENTS.md"
+        self.assertFalse(context.exists())
+        self.assertFalse(context.is_symlink())
 
     def test_codex_invalid_or_conflicting_config_is_preserved(self):
         for original in ('broken = [', '[mcp_servers.serena]\ncommand = "custom"\n',
