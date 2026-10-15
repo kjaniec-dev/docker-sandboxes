@@ -165,3 +165,94 @@ the actual `rg --version` and `rg --files` probes remain, including on the verif
 kernel. The final Codex smoke passed tooling, Chromium, native skills/context, Serena, Context7
 and fresh/stop-start/delete-recreate stages. Model authentication was not checked in this run.
 The 40 offline tests passed again after the smoke assertion correction. Test sandboxes were removed.
+
+## SBX 0.48 migration preparation, 2026-10-14
+
+The [official 0.48 release notes](https://github.com/docker/sbx-releases/releases/tag/v0.48.0)
+confirm that `--detached` and environment `--auto-approve` are rejected and that `sbx ls --json`
+returns a direct array. The launcher now uses `--detach`; smoke uses `--detach --force` and
+validates the direct array before creation and after removal. Both launcher and native validation
+require stable SBX 0.48.0 or newer through a shared standard-library Python version check.
+
+`tests/validate.sh --offline` passed **62 tests**. New regression tests exercise the real launcher
+and smoke orchestration against a controlled external CLI boundary. They cover the version floor,
+structured version documents, the new flags, fresh/restart/recreate sequencing, cleanup, malformed
+inventory, occupied names and a sandbox still listed after removal. These are offline contract
+checks; sandbox infrastructure, providers and the native runtime were not exercised.
+
+The host remains on **SBX 0.47.0**, revision `0411f50ee4700fe7bd37e6e7e3aced563e850ca9`.
+Native kit validation and the seven-environment runtime smoke matrix require a 0.48 host.
+`tests/validate.sh` also passed all 62 behavior tests, then exited **1** at the version guard:
+`Docker Sandboxes 0.48.0+ is required (observed: 'v0.47.0')`. Native builds/plans and runtime
+smoke were not run on the unsupported host.
+The version check uses the observed `sbx version --json` field `client.version`; it does not
+depend on the CLI's changing human-readable output or an available server. The 0.48 changelog's
+structured-output migration table does not list a version schema change. Actual 0.48 version JSON
+has not been observed: a temporary copy of the official Darwin/arm64 release matched GitHub's
+archive checksum, but macOS reported an invalid code signature and killed even `version`.
+No host installation, settings, credentials or existing user sandboxes were changed.
+
+SBX 0.48 supports `agent-context.directory`, so the original reason for older Claude/Codex pins
+is removed. All digests remain until replacement kits pass native validation and their profile's
+runtime smoke, including client Claude. Live Docker Hub metadata identified Claude mixin 2.1.292
+and Codex 0.162.1 as candidates; the `latest` tags pointed to different digests at inspection time.
+Choose and verify a replacement digest explicitly rather than treating `latest` as the newest
+numbered release. Native `SBX_AGENT` values and newer capability groups remain a separate follow-up.
+
+## Official kit refresh on SBX 0.48, 2026-10-15
+
+The host CLI and daemon now both report **0.48.0**, revision
+`5caf923e0587d376848f6f388eca3e0f5ca00e2d`. Real `version --json` confirms the shared
+version check's `client.version` contract. Live Docker Hub tag and OCI descriptor inspection
+selected the following official artifacts; the environment files retain their exact digests.
+
+| Agent | Selected version | Selection |
+| --- | --- | --- |
+| Claude, personal and client | 2.1.292 | Newest numbered release; `latest` still points to 2.1.291 |
+| Codex | 0.162.1 | Newest numbered release; compatible optional interactive sessions |
+| OpenCode | 1.18.33 | Existing digest still matches official `latest` |
+| Antigravity | Kit 1.0.0 | Existing digest still matches official `latest`; CLI can self-update |
+| Junie | 26.9.21 | Existing digest still matches official `latest` |
+| Copilot | 1.0.86 | Existing digest still matches official `latest` |
+
+The first native Codex creation rejected the official `latest` artifact (0.160.1): it declares
+`com.docker.sandbox/agent-interactive-sessions@1` as required, which this daemon does not support.
+The official 0.162.1 descriptor marks that capability optional. Native plans alone did not detect
+the incompatibility. No official descriptor was copied or patched.
+
+The newer Claude/Codex kits declare their native context directories as `~/.claude` and `~/.codex`.
+The Codex adapter no longer creates a symlink to workspace-ancestor instructions. Smoke now checks
+the actual native `CLAUDE.md`/`AGENTS.md` files for the composed shared dev context. Regression tests
+preserve native Codex instructions and reject an ancestor-only context for these kits.
+
+Smoke cleanup now confirms absence after a failed removal before deleting a workspace. If removal
+reports success but the following inventory fails, is malformed or still lists the sandbox, it
+retains the workspace and reports failure. Tests cover these uncertain-removal cases.
+
+The shared dev rebuild exhausted the existing builder's engine-store volume. Only the regenerable
+native builder and its cache were removed, then recreated from the official builder kit with a
+**64 GiB** volume. The subsequent cold Go compilation ended with code 137 and a stopped builder;
+the official builder was then provisioned with **16 GiB RAM** as well. Project sandboxes were
+excluded from both operations.
+
+Client Claude runtime is excluded at the user's request; verify its native plan only. This session
+does not have the client's approved project, region or machine-local host-authentication overlay.
+Raw registry evidence and native logs are retained in `.superpowers/048-latest-20261015/`.
+
+Final `tests/validate.sh` passed **71 regression tests**, **five native source kit inspections**
+and **all seven environment plans** after the rebuild. The runtime matrix on the final tree passed:
+
+| Environment | Tools/browser/skills/context/MCP | Fresh, stop/start, delete/recreate | Completed model request |
+| --- | --- | --- | --- |
+| Personal Codex 0.162.1 | Passed | Passed | Passed at all three stages |
+| Personal Claude 2.1.292 | Passed | Passed | Passed at all three stages |
+| Personal OpenCode | Passed | Passed | Not checked |
+| Personal Antigravity | Passed | Passed | Not checked |
+| Personal Junie | Passed, including actual JVM MCP transport | Passed | Not checked |
+| Client Copilot | Passed | Passed | Not checked |
+| Client Claude Vertex 2.1.292 | Native plan only (`validation-project`, `us-east5`) | Excluded by user | Excluded by user |
+
+The final inventory contained none of this run's disposable smoke sandboxes. Existing project
+sandbox IDs were unchanged. The builder was stopped after testing to release its memory while
+retaining its cache. Existing project sandboxes still need deliberate recreation to receive the
+new pinned kits and native context composition; the update did not recreate them automatically.

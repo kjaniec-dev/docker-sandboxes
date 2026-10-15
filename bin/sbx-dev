@@ -67,17 +67,11 @@ case "$profile:$agent" in
 esac
 
 command -v sbx >/dev/null 2>&1 || {
-  echo "sbx-dev: 'sbx' not found; install Docker Sandboxes 0.47.0+" >&2
+  echo "sbx-dev: 'sbx' not found; install Docker Sandboxes 0.48.0+" >&2
   exit 1
 }
 
-version="$(sbx version)"
-if [[ ! "$version" =~ ^sbx\ version:\ v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][a-zA-Z0-9.+-]+)?([[:space:]].*)?$ ]] ||
-   { (( BASH_REMATCH[1] == 0 && BASH_REMATCH[2] < 47 )); } ||
-   [[ "${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}" == 0.47.0 && "${BASH_REMATCH[4]}" == -* ]]; then
-  echo "sbx-dev: Docker Sandboxes 0.47.0+ is required (observed: $version)" >&2
-  exit 1
-fi
+sbx version --json | python3 "$ROOT/bin/check-sbx-version.py"
 export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
@@ -127,7 +121,7 @@ if [[ "$profile:$agent" == client:claude ]]; then
 fi
 
 # Apply/reconcile the declarative environment without opening an agent session.
-sbx env run "${files[@]}" --name "$name" --detached "${args[@]}"
+sbx env run "${files[@]}" --name "$name" --detach "${args[@]}"
 
 if [[ "$agent" == junie ]]; then
   brave=true

@@ -32,6 +32,13 @@ def check_lifecycle(stage, marker, token):
     print(f"smoke-check: sandbox-local marker {stage} passed")
 
 
+def check_context(agent, workspace, home):
+    native = {"claude": ".claude/CLAUDE.md", "codex": ".codex/AGENTS.md"}
+    guidance = [home / native[agent]] if agent in native else list(Path(workspace).parent.glob("*.md"))
+    check(any(path.is_file() and "/usr/share/sandbox/kit/dev/dev-context.md" in path.read_text()
+              for path in guidance), "Native common agent context missing")
+
+
 def run(argv, **kwargs):
     return subprocess.run(argv, check=True, text=True, capture_output=True, timeout=90, **kwargs).stdout
 
@@ -249,10 +256,7 @@ if(await page.textContent('h1') !== 'SBX Chromium') throw Error('Browser DOM che
         else:
             os.close(descriptor)
             raise RuntimeError(f"Shared skill is writable: {name}")
-    guidance = list(Path(workspace).parent.glob("*.md"))
-    check(any("/usr/share/sandbox/kit/dev/dev-context.md" in path.read_text() for path in guidance), "Native common agent context missing")
-    if agent == "codex":
-        check((home / ".codex/AGENTS.md").resolve() == Path(workspace).parent / "AGENTS.md", "Codex global instruction discovery missing")
+    check_context(agent, workspace, home)
     print("smoke-check: tooling, Chromium, read-only native skills and context passed")
     check_serena(command, workspace)
     check_gateway(config["mcp-gateway"])

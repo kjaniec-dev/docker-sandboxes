@@ -1,8 +1,10 @@
 # Docker Sandboxes — SBX V3
 
-Development environments for Docker Sandboxes **0.47.0+** and Sandbox Kit **V3**.
+Development environments for Docker Sandboxes **0.48.0+** and Sandbox Kit **V3**.
 
-SBX 0.47.0 is the minimum supported release for its OAuth, credential masking and proxy security fixes.
+SBX 0.48.0 is the minimum supported release. The launcher uses `--detach`, smoke automation
+uses `--force`, and `sbx ls --json` is parsed as a direct array. Earlier releases are unsupported.
+See the [official migration notes](https://github.com/docker/sbx-releases/releases/tag/v0.48.0).
 
 Personal: Claude Code, Codex, OpenCode, Antigravity and Junie.
 Client: Claude Code through Vertex AI and GitHub Copilot CLI.
@@ -14,6 +16,8 @@ Declarative `env/` files select the composition. Public commands are symlinks to
 ## Machine setup
 
 Install SBX and reusable skills with native commands:
+
+The host launcher also requires Git and Python 3.11+ for the shared structured version check.
 
 ```bash
 brew install docker/tap/sbx
@@ -28,12 +32,13 @@ Update skills with `sbx skills update`. They remain in the native shared store a
 read-only at each agent's skills path.
 
 The launcher and validation default `SBX_KIT_BUILDER=sandbox`, preserving an explicit override.
-Native SBX builds local source kits and caches them in its builder sandbox. This toolchain was
-validated with a 32 GiB builder volume. If the default builder runs out of space, use native
+Native SBX builds local source kits and caches them in its builder sandbox. Provision a builder
+with 16 GiB of memory and a 64 GiB engine-store volume for the shared toolchain. If the default
+builder runs out of space or is killed during compilation, use native
 `sbx kit builder rm --force` to remove its regenerable cache, then provision the official builder:
 
 ```bash
-sbx create --name sbx-kit-builder --kit-arg volumeSize=32g docker/sbx-kit-builder:1
+sbx create --name sbx-kit-builder --memory 16g --kit-arg volumeSize=64g docker/sbx-kit-builder:1
 ```
 
 Install command aliases from this checkout:
@@ -182,8 +187,9 @@ sbx mcp load unity --sandbox <sandbox-name>
 Serena runs inside the sandbox as a local stdio MCP server against the mounted project.
 Do not register it as a host `sbx mcp --command` server.
 `mixins/dev/configure-agent.py` preserves unrelated agent settings while registering Serena.
-It supplies Junie's missing gateway registration and bridges native context into Codex's global
-instruction discovery. Official kits register the gateway for the other agents.
+It supplies Junie's missing gateway registration. Native `agent-context.directory` places Claude
+and Codex instructions in their agent homes; no Codex instruction symlink is needed.
+Official kits register the gateway for the other agents.
 Their OpenCode/Antigravity `jq` merge can erase malformed MCP maps. The shared jq launcher checks
 only that merge against those two configuration paths and rejects it before a destructive write.
 
@@ -204,18 +210,24 @@ collide with SBX 0.46 built-ins. Official agent mixins still supply their binari
 provider egress and gateway hooks. Prefer the official standalone workloads once that collision
 is resolved. Podman Desktop needs no custom SBX backend integration.
 
-All seven environments pin their official workload or agent mixin by digest. Claude 2.1.285 and
-Codex 0.159.2 use versions preceding the incompatible `latest` descriptors: both current `latest`
-kits add `agent-context.directory`, which SBX 0.46.0 and 0.47.0 reject as an unknown field.
+All seven environments pin official workload or agent mixin digests checked on
+2026-10-15. Claude is 2.1.292 and Codex is 0.162.1, the newest numbered releases at inspection.
+The remaining agents use the official `latest` artifacts. SBX 0.48 supports the newer kits'
+`agent-context.directory`, removing the earlier compatibility constraint. The updated Codex kit
+also includes the corrected native MCP gateway registration. Existing sandboxes require recreation
+to receive updated kits; raising the CLI minimum or editing a pin does not update them.
 Antigravity, Junie 26.9.21, OpenCode 1.18.33 and Copilot 1.0.86 also use fixed digests to prevent
 unreviewed descriptor changes on the next launch. Antigravity's CLI can still self-update;
-a kit digest fixes the published artifact, not a CLI's own update behavior.
+a kit digest fixes the published artifact, not a CLI's own update behavior. Docker's `latest`
+channel can lag numbered releases, and a numbered tag can be rebuilt with another digest;
+Claude and Codex therefore use the newer numbered artifacts. Codex's `latest` artifact also
+requires a capability that SBX 0.48 rejects; 0.162.1 correctly marks that capability optional.
 Update a pin only after the replacement passes `tests/validate.sh` and that agent's smoke test
 on the supported SBX version. Do not patch or copy official descriptors to remove unknown fields.
 
 ## Verification
 
-Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX 0.47.0+,
+Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX 0.48.0+,
 a running daemon and a Docker sign-in. The repository's `--offline` mode skips native checks.
 GitHub Actions runs offline validation on every pull request and push to `main`.
 
@@ -225,6 +237,14 @@ GitHub Actions runs offline validation on every pull request and push to `main`.
 ./tests/smoke.sh codex        # real tools, Chromium, skills, context, Serena and Context7
 SBX_SMOKE_MODEL=1 ./tests/smoke.sh codex  # also completed authenticated model responses
 SBX_PROFILE=client ./tests/smoke.sh copilot
+
+# Full infrastructure/lifecycle matrix after upgrading the host to SBX 0.48.0+.
+for agent in claude codex opencode antigravity junie; do
+  SBX_PROFILE=personal ./tests/smoke.sh "$agent" || break
+done
+for agent in claude copilot; do
+  SBX_PROFILE=client ./tests/smoke.sh "$agent" || break
+done
 ```
 
 Smoke tests create uniquely named disposable repositories and sandboxes, test fresh launch,

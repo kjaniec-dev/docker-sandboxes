@@ -82,20 +82,11 @@ def main():
             subprocess.run(["codex", "mcp", "add", "serena", "--", *command], check=True, env=env)
         if os.environ.get("WORKSPACE_DIR"):
             workspace = Path(os.environ["WORKSPACE_DIR"]).resolve()
-            destination = path.parent / "AGENTS.md"
-            profile = workspace.parent / "AGENTS.md"
             if path.parent.resolve().is_relative_to(workspace):
                 raise SystemExit("sbx-dev: Codex global configuration must be outside the mounted project")
             override = path.parent / "AGENTS.override.md"
             if override.exists() and override.read_text().strip():
                 raise SystemExit(f"sbx-dev: Codex context overridden by {override}")
-            if destination.exists() or destination.is_symlink():
-                if not destination.is_symlink() or destination.resolve() != profile.resolve():
-                    raise SystemExit(f"sbx-dev: conflicting Codex global instructions in {destination}")
-            else:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                # SBX materializes this composed profile after install hooks.
-                destination.symlink_to(profile)
         return
     formats = {
         "claude": (".claude.json", "mcpServers", {"type": "stdio", "command": command[0], "args": command[1:]}),
