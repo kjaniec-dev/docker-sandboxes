@@ -1,6 +1,6 @@
 # V3 cutover evidence
 
-The repository now contains the V3 architecture from `CODEX_REWRITE_PROMPT.md`.
+The repository now contains the V3 architecture described by `AGENTS.md` and the environment files.
 Legacy harnesses, shared launch/rebuild/skills helpers, per-agent rebuild commands, scaffold generator,
 policy wrapper, tar exports, wiring tests and obsolete documentation have been removed.
 Git history is the archive; no compatibility tree remains.
@@ -31,7 +31,12 @@ response with the correct computed answer; an echoed prompt or an error cannot p
 
 ## Demonstrated integration gaps
 
-- SBX 0.46 creates Antigravity's skills ancestors as root-owned directories. A native root install
+These are historical cutover observations on SBX 0.46, not assertions that the same upstream bugs
+remain on every supported release. The [workaround register](workarounds.md) tracks active shims,
+their current evidence, removal conditions and probes. A successful smoke run with a workaround
+enabled does not show whether the workaround is still necessary.
+
+- SBX 0.46 created Antigravity's skills ancestors as root-owned directories. A native root install
   hook changes ownership of those two directories so the official startup hooks can write configuration.
 - Codex does not discover SBX's instruction file above the mounted Git root. Its global instruction
   path points to the native generated profile; project instruction files remain intact.
@@ -42,7 +47,7 @@ response with the correct computed answer; an echoed prompt or an error cannot p
 - The official OpenCode 1.18.33 mixin wrapper points to a missing extensionless executable.
   The thin workload's native PATH selects the working npm-generated executable from the same mixin.
 - Official Antigravity/OpenCode gateway hooks replace malformed MCP arrays or null with a new map.
-  The exported jq launcher validates only their exact merge command and two configuration paths.
+  The original exported jq launcher validated their exact merge command and two configuration paths.
   A native install hook selects it for those agents; invalid configuration fails before the original
   merge/move sequence can overwrite it. Other jq commands retain their normal behavior. The native
   lifecycle API exposes dependency ordering, without a pre-hook priority for an unchanged official
@@ -81,8 +86,8 @@ composition; the launcher does not migrate or delete them automatically.
 Final review deferred one minor test improvement: asserting that a sandbox-local marker survives
 stop/start and disappears after recreation. At cutover, smoke checked runtime behavior at every stage,
 but did not independently assert persistence of arbitrary sandbox-local state.
-This deferred check is now implemented in `tests/smoke-check.py`; native runtime verification of
-the marker is still pending.
+This deferred check was subsequently implemented in `tests/smoke-check.py` and is included in
+the later lifecycle matrices recorded below.
 
 ## Junie client correction, 2026-10-06
 
@@ -374,3 +379,22 @@ project sandboxes. No disposable smoke sandboxes remained, and the builder was s
 
 Raw 0.49.2 logs are retained separately in `.superpowers/0492-upgrade/`; the 0.49.1 matrix above
 remains historical evidence for that release.
+
+## Review hardening verification, 2026-10-22
+
+The current review changes passed `tests/validate.sh --offline` with **94 tests**, ShellCheck,
+Ruff correctness checks and `git diff --check`. Real-Git launcher regressions cover fsmonitor
+execution before index reads, command configuration and aliases, includes, worktree/submodule
+metadata routing, non-sample hooks, post-session mutations, child failures and TERM. These are
+detection checks; [writable Git metadata remains a shared host-execution risk](git-metadata.md).
+
+Full `tests/validate.sh` passed all **five source kit inspections** and **seven environment plans**.
+The rebuilt shared mixin passed `tests/smoke.sh` for **Antigravity, OpenCode and Junie**, each through
+fresh launch, stop/start and delete/recreate (**nine stages**). Antigravity/OpenCode ran the
+installed official gateway hooks against malformed fixtures without data loss. Junie's actual
+JVM client initialized its MCP gateway at every stage using proxy settings derived from native
+SBX runtime values. Native verification did not make authenticated model requests or repeat the
+remaining agents' runtime matrix. No disposable smoke sandboxes remained afterward.
+
+The [workaround register](workarounds.md) records retirement conditions. Passing smoke with the
+ownership/thin-workload workarounds enabled does not establish that upstream still needs them.

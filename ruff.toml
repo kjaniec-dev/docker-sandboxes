@@ -1,0 +1,5 @@
+target-version = "py311"
+
+[lint]
+# Catch invalid syntax, undefined names and unused imports without enforcing style.
+select = ["E4", "E7", "E9", "F"]

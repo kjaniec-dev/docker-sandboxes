@@ -64,3 +64,4 @@ ENV PATH=/opt/sbx-dev/bin \
 COPY --from=tools /opt/sbx-dev /opt/sbx-dev
 COPY --from=tools /out/ /
 COPY configure-agent.py /opt/sbx-dev/configure-agent.py
+COPY jq-guard.py /opt/sbx-dev/jq-guard.py
