@@ -67,7 +67,7 @@ case "$profile:$agent" in
 esac
 
 command -v sbx >/dev/null 2>&1 || {
-  echo "sbx-dev: 'sbx' not found; install Docker Sandboxes 0.48.0+" >&2
+  echo "sbx-dev: 'sbx' not found; install Docker Sandboxes 0.49.2+" >&2
   exit 1
 }
 

@@ -59,6 +59,9 @@ trap 'exit 143' TERM
 git -C "$repo" init -q
 printf '.worktrees/\n' > "$repo/.gitignore"
 mkdir "$repo/.worktrees"
+mkdir "$repo/.sbx-host-ignored"
+printf 'host ignore fixture\n' > "$repo/.sbx-host-ignored/marker"
+printf '.sbx-host-ignored/\n' >> "$repo/.git/info/exclude"
 printf 'def smoke_symbol():\n    return 42\n' > "$repo/main.py"
 printf '# Disposable SBX smoke project\n' > "$repo/README.md"
 inventory="$(sbx ls --json)"

@@ -278,3 +278,99 @@ workload-ripgrep assertions. These smoke runs did not request model responses; t
 authenticated Claude Grep probes above were separate. Client Claude runtime remains
 excluded. All seven disposable probe/smoke sandboxes were removed, and the native builder
 was stopped again while retaining its cache.
+
+## SBX 0.49.1 migration, 2026-10-21
+
+The host CLI and daemon both report **0.49.1**, revision
+`c5b19951af121b439800029695f88bf1139a0b0b`. The launcher and native validation now require
+0.49.1 or newer. Existing official kit pins and Claude, Junie and OpenCode adapters are retained.
+
+The [0.49.1 release notes](https://github.com/docker/sbx-releases/releases/tag/v0.49.1)
+advertise daemon-free local kit inspection and validation. Actual checks with both
+`sbx kit inspect --offline` and `sbx kit validate --offline` reject this repository's V3 source
+kits with `this load path has no kit builder configured`. This also affects kits without a
+Dockerfile, such as `mixins/vertex`; setting `SBX_KIT_BUILDER=sandbox` does not enable a builder
+on the offline load path. Offline support therefore cannot replace native source-kit builds.
+No V2 descriptors, generated copies of the source kits, or error-suppression fallback were added.
+
+Smoke now checks Git ignore behavior inside each fresh, restarted and recreated sandbox.
+The disposable primary repository contains `.worktrees/` ignored through `.gitignore` and an
+existing `.sbx-host-ignored/marker` ignored only by the host repository's `.git/info/exclude`.
+Regression tests reject loss of either ignore decision.
+
+Both `tests/validate.sh --offline` and full `tests/validate.sh` passed **74 behavioral tests**.
+The full native run also passed **five source kit inspections** and **all seven environment plans**.
+CI retains the lightweight offline behavior suite without installing SBX: installing a CLI just to
+check `version --json` would not validate these source kits. Actual 0.49.1 version JSON was checked
+against the launcher's version contract on the host.
+
+Client Claude Vertex runtime remains excluded at the user's request; only its native plan is
+checked using `validation-project` and `us-east5`. No client overlay, approved project or region
+is configured on this host for a runtime test.
+
+The completed runtime matrix on **2026-10-22** passed tools, Chromium, read-only skills, native
+agent context, sandbox-local Serena, Context7 and both Git ignore assertions at every stage.
+Junie also passed its actual JVM MCP transport check at all three stages. These smoke runs made
+no model requests, so model authentication was not checked.
+
+| Environment | Fresh, stop/start, delete/recreate |
+| --- | --- |
+| Personal Codex | Passed |
+| Personal Claude | Passed |
+| Personal OpenCode | Passed |
+| Personal Antigravity | Passed |
+| Personal Junie | Passed |
+| Client Copilot | Passed |
+| Client Claude Vertex | Native plan only; runtime excluded by user |
+
+The first Claude attempt passed fresh and restart checks, then failed during recreation with
+Docker Hub access and Keychain errors across the session interruption. After recovery, a complete
+retry passed. The retained temporary workspace was removed after native inventory confirmed that
+the interrupted attempt's sandbox was absent.
+
+Final inventory contained none of the disposable smoke sandboxes. All **nine** pre-existing
+project sandbox names and IDs were preserved; no project sandboxes were recreated. The native
+builder was returned to its original stopped state while retaining its build cache.
+
+Raw migration logs are retained in `.superpowers/049-upgrade/`.
+
+## SBX 0.49.2 security baseline, 2026-10-22
+
+The [0.49.2 release](https://github.com/docker/sbx-releases/releases/tag/v0.49.2) supersedes
+the 0.49.1 CLI minimum following the eMudhra CA compromise. The launcher, validation and
+repository instructions now require **0.49.2+**. Regression coverage rejects stable 0.49.1 and
+the 0.49.2 prerelease while accepting stable 0.49.2 and newer versions.
+
+The host CLI and daemon both report **0.49.2**, revision
+`5d40fd43027b33ed1f1a39c14fb07e2503d6998f`. Homebrew's installer SHA-256 matches the official
+release asset (`98b6b157963e5357e6e38388d06ec3f6a5912fa3c9710e05af246b2341a0ebbc`).
+Local Go build information confirms that the installed SBX executable was built with **Go 1.27.3**.
+After the required daemon restart, both previously running Claude projects were confirmed running
+with their original VM IDs.
+
+This change does **not** certify existing sandbox trust stores as remediated. No CA package
+updates, runtime replacements or project VM recreation were performed as part of the CLI upgrade.
+Official kit digests and custom image build inputs remain unchanged; `pullPolicy: always` cannot
+refresh an immutable digest. The [CA maintenance guide](ca-maintenance.md) documents the separate
+package/runtime maintenance and refreshed-image paths required by Docker's security advisory.
+
+Source-form offline inspection remains unsupported: on 0.49.2, all five source kits still fail
+`sbx kit inspect --offline` with `this load path has no kit builder configured`. CI therefore
+keeps its existing daemon-free behavioral suite without installing the CLI.
+
+Both offline and full native validation passed **74 tests**. The native run also passed **five
+source kit inspections** and **seven environment plans**. All six non-Vertex environments
+passed fresh, stop/start and delete/recreate smoke on 0.49.2 (**18 stages**), including workspace
+ignore preservation, tools/browser/skills/context, Serena and Context7. Junie passed its JVM MCP
+transport check at all three stages. Model requests were not tested; Vertex remained plan-only.
+
+A read-only audit of one existing Claude VM found CA package `20260601~26.04.1`, Java `25.0.4.1`,
+Node `22.22.1`, Go `1.26.0`, uv `0.9.26` and certifi `2026.07.22`. This concrete snapshot is why
+the CLI upgrade is not reported as complete VM trust-store remediation; package and independent
+runtime maintenance remain separate work.
+
+Final inventory preserved the names, IDs and running/stopped state of all **ten** existing
+project sandboxes. No disposable smoke sandboxes remained, and the builder was stopped as before.
+
+Raw 0.49.2 logs are retained separately in `.superpowers/0492-upgrade/`; the 0.49.1 matrix above
+remains historical evidence for that release.

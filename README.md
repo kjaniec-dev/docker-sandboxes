@@ -1,10 +1,14 @@
 # Docker Sandboxes — SBX V3
 
-Development environments for Docker Sandboxes **0.48.0+** and Sandbox Kit **V3**.
+Development environments for Docker Sandboxes **0.49.2+** and Sandbox Kit **V3**.
 
-SBX 0.48.0 is the minimum supported release. The launcher uses `--detach`, smoke automation
+SBX 0.49.2 is the minimum supported release. The launcher uses `--detach`, smoke automation
 uses `--force`, and `sbx ls --json` is parsed as a direct array. Earlier releases are unsupported.
-See the [official migration notes](https://github.com/docker/sbx-releases/releases/tag/v0.48.0).
+See the [official release notes](https://github.com/docker/sbx-releases/releases/tag/v0.49.2).
+
+0.49.2 rebuilds SBX with updated Go and llmman following the eMudhra CA compromise.
+Existing sandbox trust stores and pinned kit images need separate attention; installing the CLI
+does not update them. Follow the [CA maintenance guide](docs/ca-maintenance.md).
 
 Personal: Claude Code, Codex, OpenCode, Antigravity and Junie.
 Client: Claude Code through Vertex AI and GitHub Copilot CLI.
@@ -230,18 +234,22 @@ on the supported SBX version. Do not patch or copy official descriptors to remov
 
 ## Verification
 
-Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX 0.48.0+,
-a running daemon and a Docker sign-in. The repository's `--offline` mode skips native checks.
-GitHub Actions runs offline validation on every pull request and push to `main`.
+Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX 0.49.2+,
+a running daemon and Docker sign-in. The repository's `--offline` mode runs behavioral tests without
+requiring SBX and skips native builds and runtime checks. Although SBX 0.49.1 adds `kit inspect --offline`
+and `kit validate --offline`, both reject this repository's V3 source kits because the offline load path
+has no kit builder configured, including for kits without a Dockerfile. Use full native validation for
+these kits. See [migration evidence](docs/cutover.md#sbx-0491-migration-2026-10-21).
+GitHub Actions runs offline behavior validation on every pull request and push to `main`.
 
 ```bash
-./tests/validate.sh --offline  # launcher/config/model-response behavior
+./tests/validate.sh --offline  # launcher/config/model-response/ignore behavior; no SBX required
 ./tests/validate.sh           # also native source kit builds and all seven environment plans
 ./tests/smoke.sh codex        # real tools, Chromium, skills, context, Serena and Context7
 SBX_SMOKE_MODEL=1 ./tests/smoke.sh codex  # also completed authenticated model responses
 SBX_PROFILE=client ./tests/smoke.sh copilot
 
-# Full infrastructure/lifecycle matrix after upgrading the host to SBX 0.48.0+.
+# Full infrastructure/lifecycle matrix after upgrading the host to SBX 0.49.2+.
 for agent in claude codex opencode antigravity junie; do
   SBX_PROFILE=personal ./tests/smoke.sh "$agent" || break
 done
@@ -251,9 +259,11 @@ done
 ```
 
 Smoke tests create uniquely named disposable repositories and sandboxes, test fresh launch,
-stop/start and delete/recreate, then remove their sandbox and workspace. A marker in the agent's
-sandbox-local home must survive stop/start and disappear after delete/recreate. Logs remain at the
-printed location. A failed model request cannot count as a passing result. Default smoke results explicitly
+stop/start and delete/recreate, then remove their sandbox and workspace. At each stage, Git must
+preserve ignore decisions for `.worktrees/` and an existing fixture ignored only by host `.git/info/exclude`.
+A marker in the agent's sandbox-local home must survive stop/start and disappear after delete/recreate.
+Logs remain at the printed location. A failed model request cannot count as a passing result.
+Default smoke results explicitly
 say authentication was not checked. `SBX_SMOKE_KEEP_ON_FAILURE=1` retains a failed test sandbox for
 diagnosis when native SBX has not already removed it.
 

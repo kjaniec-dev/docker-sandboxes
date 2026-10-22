@@ -39,6 +39,16 @@ def check_context(agent, workspace, home):
               for path in guidance), "Native common agent context missing")
 
 
+def check_workspace_ignore(workspace):
+    check((Path(workspace) / ".sbx-host-ignored/marker").is_file(), "Host ignore fixture missing from workspace")
+    for path, label in ((".worktrees/.sbx-ignore-probe", "worktrees"),
+                        (".sbx-host-ignored/marker", "host ignore")):
+        result = subprocess.run(["git", "-C", str(workspace), "check-ignore", "-q", "--", path],
+                                text=True, capture_output=True, timeout=15)
+        check(result.returncode == 0, f"Workspace lost {label} decision: {result.stderr}")
+    print("smoke-check: workspace Git and host ignore decisions passed")
+
+
 def run(argv, **kwargs):
     return subprocess.run(argv, check=True, text=True, capture_output=True, timeout=90, **kwargs).stdout
 
@@ -193,6 +203,7 @@ def main():
     agent, workspace, stage, sandbox = sys.argv[1:]
     os.chdir(workspace)
     check_lifecycle(stage, Path.home() / ".sbx-smoke-lifecycle", sandbox)
+    check_workspace_ignore(workspace)
     if agent == "claude" and os.environ.get("CLAUDE_CODE_USE_VERTEX") == "1":
         check(os.environ.get("CLAUDE_CODE_SKIP_VERTEX_AUTH") == "1", "Vertex must use host authentication")
         check(not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"), "Unexpected sandbox ADC override")
