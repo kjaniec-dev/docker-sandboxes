@@ -10,9 +10,8 @@ def write_wrapper(root, name, target):
     wrapper = root / "bin" / name
     guard = ""
     if name == "jq":
-        guard = ('if [ "$#" -eq 4 ] && [ "$1" = "-s" ] && [ "$2" = ".[0] * .[1]" ]; then\n'
-                 '  "' + str(root / "serena/bin/python") + '" "' + str(root / "configure-agent.py") +
-                 '" --check-gateway-merge "$3" || exit $?\nfi\n')
+        guard = ('"' + str(root / "serena/bin/python") + '" "' + str(root / "jq-guard.py") +
+                 '" "$@" || exit $?\n')
     wrapper.write_text('#!/bin/sh\nexport LD_LIBRARY_PATH="' + str(root / "lib") +
                        '${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\n'
                        'export FONTCONFIG_FILE="' + str(root / "fonts.conf") +

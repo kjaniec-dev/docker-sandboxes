@@ -13,6 +13,7 @@ import tempfile
 import time
 import tomllib
 import urllib.request
+from urllib.parse import urlsplit
 
 
 def check(condition, message):
@@ -144,6 +145,18 @@ def check_serena(command, workspace):
 
 def check_junie_gateway():
     """Exercise Junie's actual JVM MCP transport, without making a model request."""
+    data = Path(os.environ.get("JUNIE_DATA") or Path.home() / ".local/share/junie")
+    cfg = data / "current/junie-app/lib/app/junie.cfg"
+    check(cfg.is_file(), "Junie's native JVM launcher configuration is missing")
+    settings = cfg.read_text().splitlines()
+    http = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    for scheme, address in (("http", http), ("https", os.environ.get("HTTPS_PROXY")
+                            or os.environ.get("https_proxy") or http)):
+        check(address, f"Native SBX {scheme} proxy is missing")
+        proxy = urlsplit(address)
+        check(f"java-options=-D{scheme}.proxyHost={proxy.hostname}" in settings
+              and f"java-options=-D{scheme}.proxyPort={proxy.port or 80}" in settings,
+              f"Junie's native {scheme} JVM settings differ from the SBX runtime proxy")
     logs = Path.home() / ".junie/logs"
     before = set(logs.glob("*.log"))
     master, slave = pty.openpty()
@@ -180,23 +193,33 @@ def check_junie_gateway():
 
 
 def check_gateway_merge_guard(path, key):
+    # Run the installed official hook rather than a copied jq command. This catches
+    # a future hook using stdin or another transport that a path guard cannot see.
+    hooks = []
+    for descriptor in Path("/usr/share/sandbox/kit").glob("*/kit.yaml"):
+        if descriptor.parent.name == "dev":
+            continue
+        kit = json.loads(run(["yq", "-o=json", ".", str(descriptor)]))
+        for capability in kit.get("capabilities", []):
+            if capability.get("type") != "com.docker.sandbox/lifecycle@1":
+                continue
+            for hook in capability.get("config", {}).get("startup", []):
+                command = hook.get("command", "")
+                if "MCP_GATEWAY_URL" in command and path.name in command:
+                    hooks.append(command)
+    check(len(hooks) == 1, "Cannot identify the installed official gateway hook; review jq protection")
     original = path.read_bytes()
     try:
-        with tempfile.TemporaryDirectory() as directory:
-            fragment = Path(directory) / "gateway.json"
-            fragment.write_text(json.dumps({key: {"mcp-gateway": {"url": "unused"}}}))
-            for invalid in ([{"command": "user-server"}], None):
-                bad = json.dumps({key: invalid})
-                path.write_text(bad)
-                result = subprocess.run(["sh", "-ec",
-                    'jq -s \'.[0] * .[1]\' "$1" "$2" > "$1.tmp"; mv "$1.tmp" "$1"',
-                    "gateway-hook", str(path), str(fragment)], capture_output=True, text=True, timeout=30)
-                check(result.returncode != 0 and path.read_text() == bad,
-                      "Official gateway merge destroyed malformed MCP configuration")
+        for bad in ("{broken", "[]", json.dumps({key: [{"command": "user-server"}]}),
+                    json.dumps({key: None})):
+            path.write_text(bad)
+            result = subprocess.run(["sh", "-ec", hooks[0]], capture_output=True, text=True, timeout=30)
+            check(result.returncode != 0 and path.read_text() == bad,
+                  "Installed official gateway hook destroyed malformed MCP configuration")
     finally:
         path.write_bytes(original)
         path.with_name(path.name + ".tmp").unlink(missing_ok=True)
-    print("smoke-check: malformed MCP gateway merge rejected without data loss")
+    print("smoke-check: installed official gateway hook rejects malformed MCP without data loss")
 
 
 def main():
@@ -215,10 +238,11 @@ def main():
     command_name = "agy" if agent == "antigravity" else agent
     for tool in (command_name, "git", "gh", "curl", "wget", "ssh", "rg", "fd", "jq", "yq", "fzf",
                  "make", "just", "shellcheck", "shfmt", "docker", "node", "npm", "corepack", "pnpm",
-                 "python3", "uv", "go", "gopls", "goimports", "golangci-lint", "staticcheck", "govulncheck",
+                 "python3", "uv", "uvx", "go", "gopls", "goimports", "golangci-lint", "staticcheck", "govulncheck",
                  "dlv", "playwright-cli", "psql", "sqlite3", "redis-cli", "java", "javac", "mvn", "gradle", "serena"):
         check(shutil.which(tool), f"Missing tool: {tool}")
-    for argv in (("node", "--version"), ("python3", "--version"), ("uv", "--version"), ("go", "version"),
+    for argv in (("node", "--version"), ("python3", "--version"), ("uv", "--version"),
+                 ("uvx", "--version"), ("go", "version"),
                  ("mvn", "--version"), ("gradle", "--version"), ("docker", "compose", "version"),
                  (command_name, "--help")):
         run(argv)
@@ -241,6 +265,11 @@ if(await page.textContent('h1') !== 'SBX Chromium') throw Error('Browser DOM che
 } finally { await browser.close(); } })().catch(e=>{console.error(e);process.exit(1)});
 """, browser], env={**os.environ, "LD_LIBRARY_PATH": "/opt/sbx-dev/lib", "FONTCONFIG_FILE": "/opt/sbx-dev/fonts.conf"})
     home = Path.home()
+    if agent == "antigravity":
+        for directory in (home / ".gemini", home / ".gemini/config"):
+            check(directory.stat().st_uid == os.getuid(), f"Antigravity config ancestor not agent-owned: {directory}")
+            with tempfile.TemporaryFile(dir=directory):
+                pass
     paths = {
         "claude": (".claude.json", "mcpServers", ".claude/skills"),
         "codex": (".codex/config.toml", "mcp_servers", ".agents/skills"),

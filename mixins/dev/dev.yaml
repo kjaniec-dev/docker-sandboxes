@@ -64,7 +64,8 @@ capabilities:
     config:
       install:
         - command: |
-            # SBX 0.46 recreates these skills ancestors as root-owned directories.
+            # Observed on SBX 0.46; retained pending a clean removal probe.
+            # See docs/workarounds.md for ownership and jq guard retirement checks.
             if [ "$SBX_AGENT_KIND" = antigravity ]; then
               chown agent:agent /home/agent/.gemini /home/agent/.gemini/config
             fi
@@ -83,15 +84,15 @@ capabilities:
             fi
           user: "0"
           env: [SBX_AGENT_KIND]
-          description: Activate working uv and add the sandbox proxy CA to Java
+          description: Reconcile tool, config ownership and Java CA workarounds
         - command: /opt/sbx-dev/serena/bin/python /opt/sbx-dev/configure-agent.py
           user: agent
-          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR]
+          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR, JUNIE_DATA, HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy]
           description: Configure sandbox-local Serena MCP
       startup:
         - command: /opt/sbx-dev/serena/bin/python /opt/sbx-dev/configure-agent.py
           user: agent
-          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR]
+          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR, JUNIE_DATA, HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy]
           description: Reconcile sandbox-local Serena MCP
 
   - type: com.docker.sandbox/agent-context@1

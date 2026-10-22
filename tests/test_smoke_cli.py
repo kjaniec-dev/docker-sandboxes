@@ -1,4 +1,4 @@
-"""Run the real smoke orchestration against the external SBX 0.48 CLI contract."""
+"""Run the real smoke orchestration against the native SBX CLI contract."""
 import json
 import os
 from pathlib import Path

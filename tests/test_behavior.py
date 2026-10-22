@@ -2,8 +2,6 @@
 import json
 import os
 from pathlib import Path
-import re
-import shutil
 import subprocess
 import tempfile
 import unittest
@@ -29,6 +27,22 @@ class LauncherTests(unittest.TestCase):
         stub = self.tools / "sbx"
         stub.write_text("#!/usr/bin/env python3\n" + '''import json, os, sys
 args = sys.argv[1:]
+stage = " ".join(args[:2]) if args[:1] == ["env"] else " ".join(args[:1])
+if stage == os.environ.get("SBX_TEST_MUTATION_STAGE"):
+    from pathlib import Path
+    import signal
+    if os.environ.get("SBX_TEST_REPLACE_METADATA"):
+        import shutil
+        metadata = Path(os.environ["SBX_TEST_REPLACE_METADATA"])
+        saved = metadata.with_name("saved-metadata")
+        metadata.rename(saved)
+        shutil.copytree(saved, metadata)
+    for name, value in json.loads(os.environ.get("SBX_TEST_MUTATIONS", "[]")):
+        target = Path(name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(value)
+    if os.environ.get("SBX_TEST_SIGNAL"):
+        os.kill(os.getppid(), getattr(signal, os.environ["SBX_TEST_SIGNAL"]))
 with open(os.environ["SBX_TEST_LOG"], "a") as stream:
     stream.write(json.dumps({"argv": args, "builder": os.environ.get("SBX_KIT_BUILDER")}) + "\\n")
 if args == ["version", "--json"]:
@@ -48,7 +62,9 @@ elif args[:3] == ["secret", "ls", "--sandbox"]:
 elif args[:3] == ["secret", "ls", "--global"]:
     print('{"custom_secrets": [{"env": "JUNIE_API_KEY", "targets": ["junie.jetbrains.com", "ingrazzio-cloud-prod.labs.jb.gg"], "placeholder": "sbx-cs-test"}]}')
 elif args[:2] == ["env", "exec"]:
-    pass
+    sys.exit(int(os.environ.get("SBX_TEST_RUN_EXIT", "0")))
+elif args[:1] == ["run"]:
+    sys.exit(int(os.environ.get("SBX_TEST_RUN_EXIT", "0")))
 elif args[:1] != ["run"]:
     sys.exit("unexpected SBX command: " + repr(args))
 ''')
@@ -318,6 +334,138 @@ elif args[:1] != ["run"]:
 
     def test_outside_git_repository_fails_before_launch(self):
         self.assert_no_launch(self.launch(cwd=self.home))
+
+    def test_command_config_is_rejected_before_host_git_can_execute_it(self):
+        marker = self.base / "host-command-ran"
+        self.git("config", "core.fsmonitor", f"touch '{marker}'")
+        result = self.launch()
+        self.assert_no_launch(result)
+        self.assertIn("core.fsmonitor", result.stderr)
+        self.assertFalse(marker.exists(), "audit must precede ls-files/check-ignore")
+
+    def test_executable_config_families_are_rejected(self):
+        config = self.repo / ".git/config"
+        original = config.read_bytes()
+        keys = ("core.hooksPath", "core.sshCommand", "core.pager", "core.editor",
+                "filter.lfs.process", "diff.custom.textconv", "diff.external",
+                "merge.custom.driver", "alias.run", "credential.helper",
+                "credential.https://example.invalid.helper", "gpg.ssh.program",
+                "hook.configured.command", "trailer.custom.cmd", "trailer.custom.command",
+                "core.alternateRefsCommand", "gc.recentObjectsHook", "interactive.diffFilter",
+                "difftool.custom.cmd", "mergetool.custom.cmd", "gpg.ssh.defaultKeyCommand",
+                "tar.custom.command", "difftool.custom.path", "mergetool.custom.path")
+        for key in keys:
+            with self.subTest(key=key):
+                config.write_bytes(original)
+                self.reset_log()
+                self.git("config", key, "!touch /never-execute")
+                result = self.launch()
+                self.assert_no_launch(result)
+                self.assertIn(key.lower(), result.stderr.lower())
+
+    def test_benign_local_settings_and_non_shell_alias_remain_usable(self):
+        self.git("config", "user.name", "Test Developer")
+        self.git("config", "alias.st", "status --short")
+        self.assertEqual(self.launch().returncode, 0)
+
+    def test_non_shell_alias_cannot_inject_command_configuration(self):
+        for alias in ('-c core.fsmonitor=attack status', '"-c" core.fsmonitor=attack status',
+                      '--config-env=core.fsmonitor=ATTACK status'):
+            with self.subTest(alias=alias):
+                self.git("config", "alias.indirect", alias)
+                self.reset_log()
+                result = self.launch()
+                self.assert_no_launch(result)
+                self.assertIn("alias.indirect", result.stderr)
+
+    def test_includes_and_malformed_config_fail_closed(self):
+        config = self.repo / ".git/config"
+        original = config.read_bytes()
+        for suffix in ('\n[include]\n path = ../hidden-config\n',
+                       '\n[includeIf "onbranch:inactive"]\n path = ../hidden-config\n',
+                       '\n[broken\n'):
+            with self.subTest(suffix=suffix):
+                config.write_bytes(original + suffix.encode())
+                self.reset_log()
+                self.assert_no_launch(self.launch())
+
+    def test_non_sample_hooks_and_metadata_symlinks_are_rejected(self):
+        hooks = self.repo / ".git/hooks"
+        hook = hooks / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 0\n")
+        self.assert_no_launch(self.launch())
+        hook.unlink()
+        target = self.base / "host-config"
+        config = self.repo / ".git/config"
+        config.rename(target)
+        config.symlink_to(target)
+        self.reset_log()
+        self.assert_no_launch(self.launch())
+
+    def test_worktree_and_submodule_configs_are_audited_even_when_inactive(self):
+        for relative in ("config.worktree", "worktrees/topic/config.worktree", "modules/sub/config",
+                         "worktrees/objects/config.worktree", "modules/objects/config"):
+            with self.subTest(relative=relative):
+                path = self.repo / ".git" / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('[core]\n fsmonitor = malicious-command\n')
+                self.reset_log()
+                result = self.launch()
+                self.assert_no_launch(result)
+                self.assertIn("core.fsmonitor", result.stderr)
+                path.unlink()
+
+    def test_metadata_mutations_are_detected_after_all_session_branches(self):
+        for agent, profile, stage in (("codex", "personal", "run"),
+                                      ("junie", "personal", "env exec"),
+                                      ("claude", "client", "env exec"),
+                                      ("codex", "personal", "env run")):
+            with self.subTest(agent=agent, profile=profile, stage=stage):
+                target = self.repo / ".git/config.worktree"
+                self.reset_log()
+                result = self.launch(agent, env={
+                    "SBX_PROFILE": profile, "ANTHROPIC_VERTEX_PROJECT_ID": "project",
+                    "CLOUD_ML_REGION": "eu", "SBX_TEST_MUTATION_STAGE": stage,
+                    "SBX_TEST_MUTATIONS": json.dumps([[str(target), '[core]\n fsmonitor = attack\n']]),
+                })
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+                self.assertIn("core.fsmonitor", result.stderr)
+                target.unlink()
+
+    def test_post_audit_runs_on_failure_and_preserves_child_exit_status(self):
+        target = self.repo / ".git/hooks/pre-commit"
+        result = self.launch(env={"SBX_TEST_RUN_EXIT": "17", "SBX_TEST_MUTATION_STAGE": "run",
+                                  "SBX_TEST_MUTATIONS": json.dumps([[str(target), "attack"]])})
+        self.assertEqual(result.returncode, 17, result.stderr)
+        self.assertIn("pre-commit", result.stderr)
+
+    def test_post_audit_runs_when_launcher_receives_term(self):
+        target = self.repo / ".git/hooks/pre-commit"
+        result = self.launch(env={"SBX_TEST_MUTATION_STAGE": "run", "SBX_TEST_SIGNAL": "SIGTERM",
+                                  "SBX_TEST_MUTATIONS": json.dumps([[str(target), "attack"]])})
+        self.assertEqual(result.returncode, 143, result.stderr)
+        self.assertIn("pre-commit", result.stderr)
+
+    def test_post_audit_rejects_replacement_git_directory(self):
+        result = self.launch(env={"SBX_TEST_MUTATION_STAGE": "run",
+                                  "SBX_TEST_REPLACE_METADATA": str(self.repo / ".git")})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("replaced", result.stderr)
+
+    def test_git_metadata_routing_cannot_hide_another_common_directory(self):
+        hidden = self.repo / "hidden-metadata"
+        hidden.mkdir()
+        (self.repo / ".git/commondir").write_text(str(hidden))
+        self.assert_no_launch(self.launch())
+
+    def test_submodule_commondir_cannot_hide_config_in_object_store(self):
+        hidden = self.repo / ".git/objects/hidden-common"
+        hidden.mkdir(parents=True)
+        (hidden / "config").write_text('[core]\n fsmonitor = attack\n')
+        module = self.repo / ".git/modules/sub"
+        module.mkdir(parents=True)
+        (module / "commondir").write_text(str(hidden))
+        self.assert_no_launch(self.launch())
 
 
 if __name__ == "__main__":

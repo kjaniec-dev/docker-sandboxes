@@ -15,5 +15,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Install linters
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends shellcheck
+          python3 -m venv "$RUNNER_TEMP/linters"
+          "$RUNNER_TEMP/linters/bin/python" -m pip install --disable-pip-version-check ruff==0.14.1
+      - name: Lint shell scripts
+        run: shellcheck bin/sbx-dev tests/validate.sh tests/smoke.sh workloads/opencode-dev/run.sh
+      - name: Lint Python
+        run: '"$RUNNER_TEMP/linters/bin/ruff" check .'
       - name: Validate launcher, adapters and smoke checks
         run: ./tests/validate.sh --offline

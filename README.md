@@ -1,14 +1,10 @@
 # Docker Sandboxes — SBX V3
 
-Development environments for Docker Sandboxes **0.49.2+** and Sandbox Kit **V3**.
+Development environments for Docker Sandboxes and Sandbox Kit **V3**.
 
-SBX 0.49.2 is the minimum supported release. The launcher uses `--detach`, smoke automation
-uses `--force`, and `sbx ls --json` is parsed as a direct array. Earlier releases are unsupported.
-See the [official release notes](https://github.com/docker/sbx-releases/releases/tag/v0.49.2).
-
-0.49.2 rebuilds SBX with updated Go and llmman following the eMudhra CA compromise.
-Existing sandbox trust stores and pinned kit images need separate attention; installing the CLI
-does not update them. Follow the [CA maintenance guide](docs/ca-maintenance.md).
+The enforced version floor lives in [the version check](bin/check-sbx-version.py).
+Installed CLI updates do not refresh existing sandbox trust stores or pinned kit images;
+follow the [CA maintenance guide](docs/ca-maintenance.md).
 
 Personal: Claude Code, Codex, OpenCode, Antigravity and Junie.
 Client: Claude Code through Vertex AI and GitHub Copilot CLI.
@@ -86,6 +82,11 @@ approved regions; see [client Vertex configuration](docs/client-vertex.md).
 ## Launch an agent
 
 Run inside the project's main Git checkout. Add `.worktrees/` to its Git ignore rules first.
+
+The launcher audits local Git configuration and hooks before launch and on exit. This detects
+command-bearing metadata but does not isolate writable `.git` from concurrent host Git or shell
+prompts. Read [the Git metadata policy and recovery steps](docs/git-metadata.md) before use; keep
+this launcher checkout outside workspaces exposed to untrusted agents.
 
 ```bash
 cd ~/src/my-project
@@ -194,12 +195,14 @@ Do not register it as a host `sbx mcp --command` server.
 It supplies Junie's missing gateway registration. Native `agent-context.directory` places Claude
 and Codex instructions in their agent homes; no Codex instruction symlink is needed.
 Official kits register the gateway for the other agents.
-Their OpenCode/Antigravity `jq` merge can erase malformed MCP maps. The shared jq launcher checks
-only that merge against those two configuration paths and rejects it before a destructive write.
+Their OpenCode/Antigravity `jq` merge can erase malformed MCP maps. The shared jq launcher validates
+those configuration paths whenever they appear in its arguments, including relative paths and
+symlinks, independently of options and filter spelling. Native smoke executes the installed official
+gateway hook against malformed fixtures to detect changes that bypass file arguments.
 
-Common instructions use native `agent-context`. SBX 0.46 creates Antigravity's skills ancestors
-as root-owned directories; a small native install hook restores their agent ownership so official
-startup hooks can write configuration.
+Common instructions use native `agent-context`. A retained install hook restores Antigravity's
+config-directory ownership. See the [workaround register](docs/workarounds.md) for the original
+observations, current evidence limits, removal conditions and probes for these integration adapters.
 
 ## Developer tools and composition
 
@@ -212,35 +215,29 @@ version probe fails.
 Ripgrep comes from each workload's base image (`/usr/bin/rg`); the shared mixin does not
 install or export another copy. Claude uses its default built-in search configuration.
 
-Claude and OpenCode use thin local workloads because their official standalone workload names
-collide with SBX 0.46 built-ins. Official agent mixins still supply their binaries, credentials,
-provider egress and gateway hooks. Prefer the official standalone workloads once that collision
-is resolved. Podman Desktop needs no custom SBX backend integration.
+Claude and OpenCode retain thin local workloads after standalone workload-name collisions observed
+during the original cutover. Official agent mixins supply their binaries, credentials, provider egress
+and gateway hooks. Retirement requires the [clean replacement probes](docs/workarounds.md),
+including testing the current supported SBX release. Podman Desktop needs no custom backend integration.
 
-All seven environments pin official workload or agent mixin digests checked on
-2026-10-15. Claude is 2.1.292 and Codex is 0.162.1, the newest numbered releases at inspection.
-The remaining agents use the official `latest` artifacts. SBX 0.48 supports the newer kits'
-`agent-context.directory`, removing the earlier compatibility constraint. The updated Codex kit
-also includes the corrected native MCP gateway registration. Existing sandboxes require recreation
-to receive updated kits; raising the CLI minimum or editing a pin does not update them.
-Antigravity, Junie 26.9.21, OpenCode 1.18.33 and Copilot 1.0.86 also use fixed digests to prevent
-unreviewed descriptor changes on the next launch. Antigravity's CLI can still self-update;
-a kit digest fixes the published artifact, not a CLI's own update behavior. Docker's `latest`
-channel can lag numbered releases, and a numbered tag can be rebuilt with another digest;
-Claude and Codex therefore use the newer numbered artifacts. Codex's `latest` artifact also
-requires a capability that SBX 0.48 rejects; 0.162.1 correctly marks that capability optional.
-Update a pin only after the replacement passes `tests/validate.sh` and that agent's smoke test
-on the supported SBX version. Do not patch or copy official descriptors to remove unknown fields.
+The [environment files](env/) are authoritative for official kit digests and their selection comments;
+[cutover evidence](docs/cutover.md) records the versions and runtime matrix actually tested.
+A digest pins the published artifact; agent CLIs may still self-update. Docker's `latest` channel
+can lag numbered releases, and numbered tags can be rebuilt with another digest.
+Update a pin only after the replacement passes `tests/validate.sh` and that agent's smoke test.
+Do not patch or copy official descriptors to remove unknown fields. Existing sandboxes require
+recreation to receive updated kits; raising the CLI minimum or editing a pin does not update them.
 
 ## Verification
 
-Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require SBX 0.49.2+,
+Host prerequisites for validation: Git, Python 3.11+ and jq; native checks also require supported SBX,
 a running daemon and Docker sign-in. The repository's `--offline` mode runs behavioral tests without
 requiring SBX and skips native builds and runtime checks. Although SBX 0.49.1 adds `kit inspect --offline`
 and `kit validate --offline`, both reject this repository's V3 source kits because the offline load path
 has no kit builder configured, including for kits without a Dockerfile. Use full native validation for
 these kits. See [migration evidence](docs/cutover.md#sbx-0491-migration-2026-10-21).
-GitHub Actions runs offline behavior validation on every pull request and push to `main`.
+GitHub Actions runs ShellCheck, Ruff correctness checks and offline behavior validation on every
+pull request and push to `main`.
 
 ```bash
 ./tests/validate.sh --offline  # launcher/config/model-response/ignore behavior; no SBX required
@@ -249,7 +246,7 @@ GitHub Actions runs offline behavior validation on every pull request and push t
 SBX_SMOKE_MODEL=1 ./tests/smoke.sh codex  # also completed authenticated model responses
 SBX_PROFILE=client ./tests/smoke.sh copilot
 
-# Full infrastructure/lifecycle matrix after upgrading the host to SBX 0.49.2+.
+# Full infrastructure/lifecycle matrix on a supported SBX release.
 for agent in claude codex opencode antigravity junie; do
   SBX_PROFILE=personal ./tests/smoke.sh "$agent" || break
 done

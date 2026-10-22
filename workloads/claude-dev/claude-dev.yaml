@@ -2,6 +2,7 @@
 schemaVersion: "3"
 displayName: Claude Dev Shell
 description: Minimal workload identity for Claude Code composed with Docker's official Claude V3 mixin.
+# Retained after the original standalone-name collision; removal probe: docs/workarounds.md.
 kind: workload
 version: "1.0.0"
 

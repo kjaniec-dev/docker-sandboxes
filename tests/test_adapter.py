@@ -12,6 +12,9 @@ import unittest
 from unittest.mock import patch
 
 ADAPTER = Path(__file__).resolve().parents[1] / "mixins/dev/configure-agent.py"
+spec = importlib.util.spec_from_file_location("smoke_check", Path(__file__).with_name("smoke-check.py"))
+smoke = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(smoke)
 FORMATS = {
     "claude": (".claude.json", "mcpServers"),
     "opencode": (".config/opencode/opencode.json", "mcp"),
@@ -75,7 +78,7 @@ class AdapterTests(unittest.TestCase):
                 self.assertNotEqual(self.invoke(agent).returncode, 0)
                 self.assertEqual(path.read_text(), original)
 
-    def gateway_hook(self, name, fragment):
+    def gateway_hook(self, name, fragment, options=None, operands=None):
         # Exercise the shipped jq launcher and the official kits' merge/move sequence.
         tools = self.home / "tools"
         (tools / "bin").mkdir(parents=True, exist_ok=True)
@@ -84,15 +87,16 @@ class AdapterTests(unittest.TestCase):
         if not (tools / "libexec/jq").exists():
             (tools / "libexec/jq").symlink_to(shutil.which("jq"))
             (tools / "serena/bin/python").symlink_to(sys.executable)
-        shutil.copy2(ADAPTER, tools / "configure-agent.py")
+        shutil.copy2(ADAPTER.with_name("jq-guard.py"), tools / "jq-guard.py")
         spec = importlib.util.spec_from_file_location("export_tools", ADAPTER.with_name("export-tools.py"))
         exporter = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(exporter)
         exporter.write_wrapper(tools, "jq", str(tools / "libexec/jq"))
         frag = self.fixture("gateway.json", json.dumps(fragment))
         cfg = self.home / name
-        return subprocess.run(["sh", "-ec", 'jq -s \'.[0] * .[1]\' "$1" "$2" > "$1.tmp"; mv "$1.tmp" "$1"',
-                               "gateway-hook", str(cfg), str(frag)], capture_output=True, text=True,
+        return subprocess.run(["sh", "-ec", 'cfg=$1; shift; jq "$@" > "$cfg.tmp"; mv "$cfg.tmp" "$cfg"',
+                               "gateway-hook", str(cfg), *(options or ["-s", ".[0] * .[1]"]),
+                               *(operands or [str(cfg), str(frag)])], capture_output=True, text=True, cwd=self.home,
                               env={**os.environ, "HOME": str(self.home),
                                    "PATH": str(tools / "bin") + os.pathsep + os.environ["PATH"]})
 
@@ -122,6 +126,74 @@ class AdapterTests(unittest.TestCase):
         result = self.gateway_hook("unrelated.json", {"mcp": {"example": True}})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(unrelated.read_text()), {"mcp": {"example": True}})
+
+    def test_gateway_guard_survives_changed_jq_options_filters_and_file_order(self):
+        variants = (["--slurp", ".[0] * .[1]"],
+                    ["-cs", ".[0] * .[1]"],
+                    ["-s", "reduce .[] as $part ({}; . * $part)"],
+                    ["--sort-keys", "-s", ".[0] * .[1]"])
+        for agent in ("antigravity", "opencode"):
+            name, key = FORMATS[agent]
+            for options in variants:
+                with self.subTest(agent=agent, options=options):
+                    bad = json.dumps({key: ["preserve-me"]})
+                    path = self.fixture(name, bad)
+                    result = self.gateway_hook(name, {key: {"mcp-gateway": {}}}, options,
+                                               [str(self.home / "gateway.json"), str(path)])
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("expected", result.stderr)
+                    self.assertEqual(path.read_text(), bad)
+
+    def test_gateway_guard_forwards_changed_options_for_valid_config(self):
+        name, key = FORMATS["opencode"]
+        for options in (["--slurp", ".[0] * .[1]"],
+                        ["-cs", "reduce .[] as $part ({}; . * $part)"]):
+            with self.subTest(options=options):
+                path = self.fixture(name, json.dumps({"theme": "dark", key: {"user": {}}}))
+                result = self.gateway_hook(name, {key: {"mcp-gateway": {}}}, options)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(path.read_text()),
+                                 {"theme": "dark", key: {"user": {}, "mcp-gateway": {}}})
+
+    def test_gateway_guard_resolves_relative_paths_and_symlinks(self):
+        name, key = FORMATS["opencode"]
+        path = self.fixture(name, '{"mcp": null}')
+        alias = self.home / "config-alias.json"
+        alias.symlink_to(path)
+        for operand in (name, str(alias)):
+            with self.subTest(operand=operand):
+                result = self.gateway_hook(name, {key: {"mcp-gateway": {}}},
+                                           operands=[operand, str(self.home / "gateway.json")])
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+                self.assertIn("expected mcp", result.stderr)
+                self.assertEqual(path.read_text(), '{"mcp": null}')
+
+    def test_native_smoke_runs_installed_hook_and_detects_stdin_guard_bypass(self):
+        name, key = FORMATS["opencode"]
+        path = self.fixture(name, json.dumps({key: {"user-server": {"command": "custom"}}}))
+        self.assertEqual(self.gateway_hook(name, {key: {"mcp-gateway": {}}}).returncode, 0)
+        original = path.read_bytes()
+        descriptor = self.fixture("official/kit.yaml", "{}")
+        direct = 'jq --slurp \'.[0] * .[1]\' "$cfg" "$frag"'
+        stdin = 'cat "$cfg" "$frag" | jq --slurp \'.[0] * .[1]\''
+        for merge in (direct, stdin):
+            command = ('# MCP_GATEWAY_URL\n'
+                       'cfg="$HOME/.config/opencode/opencode.json"\n'
+                       'frag="$HOME/gateway.json"\n' + merge +
+                       ' > "$cfg.tmp"\nmv "$cfg.tmp" "$cfg"\n')
+            kit = {"capabilities": [{"type": "com.docker.sandbox/lifecycle@1",
+                                      "config": {"startup": [{"command": command}]}}]}
+            with self.subTest(merge=merge), \
+                 patch.object(Path, "glob", return_value=[descriptor]), \
+                 patch.object(smoke, "run", return_value=json.dumps(kit)), \
+                 patch.dict(os.environ, {"HOME": str(self.home),
+                     "PATH": str(self.home / "tools/bin") + os.pathsep + os.environ["PATH"]}):
+                if merge == direct:
+                    smoke.check_gateway_merge_guard(path, key)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "destroyed malformed"):
+                        smoke.check_gateway_merge_guard(path, key)
+                self.assertEqual(path.read_bytes(), original)
 
     def test_codex_existing_local_server_is_preserved(self):
         original = ('model = "custom"\n[mcp_servers.remote]\nurl = "https://remote.invalid"\n'
