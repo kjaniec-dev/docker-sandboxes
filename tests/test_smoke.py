@@ -1,6 +1,7 @@
 """Prevent an echoed, unfinished or failed model turn from passing smoke."""
 import importlib.util
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -39,6 +40,33 @@ class LifecycleTests(unittest.TestCase):
         for stage in ("fresh", "recreated"):
             with self.subTest(stage=stage), self.assertRaises(RuntimeError):
                 smoke.check_lifecycle(stage, self.marker, "sandbox-token")
+
+
+class WorkspaceIgnoreTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.workspace = Path(self.tmp.name)
+        subprocess.run(["git", "init", "-q", str(self.workspace)], check=True)
+        (self.workspace / ".gitignore").write_text(".worktrees/\n")
+        (self.workspace / ".worktrees").mkdir()
+        fixture = self.workspace / ".sbx-host-ignored/marker"
+        fixture.parent.mkdir()
+        fixture.write_text("host ignore fixture\n")
+
+    def test_workspace_preserves_both_repository_and_host_ignore_decisions(self):
+        (self.workspace / ".git/info/exclude").write_text(".sbx-host-ignored/\n")
+        smoke.check_workspace_ignore(self.workspace)
+
+    def test_missing_host_ignore_is_rejected_even_when_worktrees_is_ignored(self):
+        with self.assertRaisesRegex(RuntimeError, "host ignore"):
+            smoke.check_workspace_ignore(self.workspace)
+
+    def test_missing_worktrees_ignore_is_rejected(self):
+        (self.workspace / ".gitignore").write_text("")
+        (self.workspace / ".git/info/exclude").write_text(".sbx-host-ignored/\n")
+        with self.assertRaisesRegex(RuntimeError, "worktrees"):
+            smoke.check_workspace_ignore(self.workspace)
 
 
 class ContextTests(unittest.TestCase):
