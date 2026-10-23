@@ -79,15 +79,26 @@ repo_metadata_identity="$(python3 "$ROOT/bin/audit-git.py" --identity "$repo_roo
 # Keep this shell alive so failed provisioning, agent exits and catchable signals
 # all pass through the same post-session check. This detects unsafe metadata;
 # writable .git remains shared with the host (see docs/git-metadata.md).
+name=""
+session_started=false
 audit_on_exit() {
-  local status=$? audit_status=0
+  local status=$? audit_status=0 quarantined
   trap - EXIT
   python3 "$ROOT/bin/audit-git.py" "$repo_root" "$repo_metadata_identity" || audit_status=$?
+  if [[ "$audit_status" != 0 && "$session_started" == true ]]; then
+    # A Git-aware prompt would run planted commands before the warning is read:
+    # stop the sandbox and move .git aside (nothing is deleted or rewritten).
+    [[ -z "$name" ]] || sbx stop "$name" >/dev/null 2>&1 || true
+    if quarantined="$(python3 "$ROOT/bin/audit-git.py" --quarantine "$repo_root")"; then
+      echo "sbx-dev: Git metadata moved to $quarantined; inspect it with trusted tools, then mv it back to .git" >&2
+    fi
+  fi
   [[ "$status" != 0 ]] || status=$audit_status
   exit "$status"
 }
 trap audit_on_exit EXIT
-trap 'exit 130' INT
+# The agent receives Ctrl-C itself; keep waiting so its exit status is preserved.
+trap ':' INT
 trap 'exit 143' TERM
 
 if [[ -L "$repo_root/.worktrees" || -n "$(git -c core.fsmonitor=false -c core.hooksPath=/dev/null -C "$repo_root" ls-files -- .worktrees)" ]]; then
@@ -125,6 +136,7 @@ if [[ "$profile:$agent" == client:claude ]]; then
   )
 fi
 
+session_started=true
 # Apply/reconcile the declarative environment without opening an agent session.
 sbx env run "${files[@]}" --name "$name" --detach "${args[@]}"
 
