@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -65,6 +66,8 @@ elif args[:2] == ["env", "exec"]:
     sys.exit(int(os.environ.get("SBX_TEST_RUN_EXIT", "0")))
 elif args[:1] == ["run"]:
     sys.exit(int(os.environ.get("SBX_TEST_RUN_EXIT", "0")))
+elif args[:1] == ["stop"]:
+    pass
 elif args[:1] != ["run"]:
     sys.exit("unexpected SBX command: " + repr(args))
 ''')
@@ -350,7 +353,10 @@ elif args[:1] != ["run"]:
                 "filter.lfs.process", "diff.custom.textconv", "diff.external",
                 "merge.custom.driver", "alias.run", "credential.helper",
                 "credential.https://example.invalid.helper", "gpg.ssh.program",
-                "hook.configured.command", "trailer.custom.cmd", "trailer.custom.command",
+                "hook.configured.command", "trailer.custom.cmd", "protocol.allow", "protocol.ext.allow",
+                "submodule.sub.update", "sendemail.tocmd", "sendemail.work.cccmd", "browser.custom.cmd", "man.custom.cmd",
+                "remote.origin.vcs",
+                "trailer.custom.cmd", "trailer.custom.command",
                 "core.alternateRefsCommand", "gc.recentObjectsHook", "interactive.diffFilter",
                 "difftool.custom.cmd", "mergetool.custom.cmd", "gpg.ssh.defaultKeyCommand",
                 "tar.custom.command", "difftool.custom.path", "mergetool.custom.path")
@@ -430,6 +436,7 @@ elif args[:1] != ["run"]:
                 })
                 self.assertNotEqual(result.returncode, 0, result.stderr)
                 self.assertIn("core.fsmonitor", result.stderr)
+                self.restore_quarantine()
                 target.unlink()
 
     def test_post_audit_runs_on_failure_and_preserves_child_exit_status(self):
@@ -466,6 +473,86 @@ elif args[:1] != ["run"]:
         module.mkdir(parents=True)
         (module / "commondir").write_text(str(hidden))
         self.assert_no_launch(self.launch())
+
+    def test_remote_helper_urls_are_rejected(self):
+        config = self.repo / ".git/config"
+        original = config.read_bytes()
+        for key, value in (("remote.origin.url", "ext::sh -c 'touch /never-execute'"),
+                           ("remote.origin.pushurl", "fd::3"),
+                           ("url.ext::sh -c x.insteadOf", "https://example.invalid/"),
+                           ("url.https://example.invalid/.insteadOf", "ext::sh -c x")):
+            with self.subTest(key=key):
+                config.write_bytes(original)
+                self.reset_log()
+                self.git("config", key, value)
+                self.assert_no_launch(self.launch())
+        config.write_bytes(original)
+        self.git("config", "remote.origin.url", "https://example.invalid/repo.git")
+        self.git("config", "url.https://example.invalid/.insteadOf", "example:")
+        self.reset_log()
+        self.assertEqual(self.launch().returncode, 0)
+
+    def restore_quarantine(self):
+        (quarantined,) = self.repo.glob(".git.sbx-quarantine-*")
+        quarantined.rename(self.repo / ".git")
+
+    def commit_all(self):
+        self.git("add", ".gitignore")
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "init")
+
+    def test_genuine_linked_worktree_is_accepted(self):
+        self.commit_all()
+        self.git("worktree", "add", "-q", ".worktrees/topic", "-b", "topic")
+        self.git("worktree", "add", "-q", ".worktrees/group/nested", "-b", "nested")
+        self.assertEqual(self.launch().returncode, 0)
+
+    def test_nested_repositories_and_redirected_worktrees_are_rejected(self):
+        worktrees = self.repo / ".worktrees"
+        worktrees.mkdir()
+        evil = worktrees / "evil"
+        subprocess.run(["git", "init", "-q", str(evil)], check=True)
+        self.assert_no_launch(self.launch())
+        shutil.rmtree(evil)
+        crafted = self.repo / "crafted"
+        crafted.mkdir()
+        topic = worktrees / "topic"
+        topic.mkdir()
+        (topic / ".git").write_text(f"gitdir: {crafted}\n")
+        self.reset_log()
+        self.assert_no_launch(self.launch())
+        shutil.rmtree(topic)
+        bare = worktrees / "bare"
+        subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+        self.reset_log()
+        self.assert_no_launch(self.launch())
+        shutil.rmtree(bare)
+        (worktrees / "link").symlink_to(self.base)
+        self.reset_log()
+        self.assert_no_launch(self.launch())
+
+    def test_failed_post_audit_stops_sandbox_and_quarantines_git_metadata(self):
+        target = self.repo / ".git/hooks/pre-commit"
+        result = self.launch(env={"SBX_TEST_MUTATION_STAGE": "run",
+                                  "SBX_TEST_MUTATIONS": json.dumps([[str(target), "attack"]])})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.repo / ".git").exists())
+        quarantined = list(self.repo.glob(".git.sbx-quarantine-*"))
+        self.assertEqual(len(quarantined), 1, result.stderr)
+        self.assertTrue((quarantined[0] / "hooks/pre-commit").exists())
+        self.assertIn(str(quarantined[0]), result.stderr)
+        self.assertEqual([call["argv"][0] for call in self.calls()].count("stop"), 1)
+        self.reset_log()
+        self.assert_no_launch(self.launch())
+
+    def test_preflight_failure_never_quarantines(self):
+        self.git("config", "core.fsmonitor", "attack")
+        self.assert_no_launch(self.launch())
+        self.assertTrue((self.repo / ".git").is_dir())
+        self.assertEqual(list(self.repo.glob(".git.sbx-quarantine-*")), [])
+
+    def test_agent_interrupt_does_not_override_agent_exit_status(self):
+        result = self.launch(env={"SBX_TEST_MUTATION_STAGE": "run", "SBX_TEST_SIGNAL": "SIGINT"})
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
