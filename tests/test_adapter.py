@@ -168,32 +168,84 @@ class AdapterTests(unittest.TestCase):
                 self.assertIn("expected mcp", result.stderr)
                 self.assertEqual(path.read_text(), '{"mcp": null}')
 
+    def test_unrelated_jq_does_not_require_the_guard_interpreter(self):
+        name, key = FORMATS["opencode"]
+        self.fixture(name, '{"mcp": null}')
+        self.fixture("unrelated.json", "{}")
+        self.assertEqual(self.gateway_hook("unrelated.json", {"mcp": {}}).returncode, 0)
+        (self.home / "tools/serena/bin/python").unlink()
+        result = subprocess.run([str(self.home / "tools/bin/jq"), "-n", "{answer: 42}"],
+                                capture_output=True, text=True,
+                                env={**os.environ, "HOME": str(self.home)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {"answer": 42})
+
+    def test_gateway_guard_recognizes_hardlink_aliases(self):
+        name, key = FORMATS["opencode"]
+        path = self.fixture(name, '{"mcp": null}')
+        alias = self.home / "hardlink.json"
+        alias.hardlink_to(path)
+        result = self.gateway_hook(name, {key: {"mcp-gateway": {}}},
+                                   operands=[str(alias), str(self.home / "gateway.json")])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("expected mcp", result.stderr)
+        self.assertEqual(path.read_text(), '{"mcp": null}')
+
     def test_native_smoke_runs_installed_hook_and_detects_stdin_guard_bypass(self):
         name, key = FORMATS["opencode"]
         path = self.fixture(name, json.dumps({key: {"user-server": {"command": "custom"}}}))
-        self.assertEqual(self.gateway_hook(name, {key: {"mcp-gateway": {}}}).returncode, 0)
+        self.assertEqual(self.gateway_hook(name, {key: {"mcp-gateway": {
+            "url": "http://gateway.invalid/mcp", "headers": {"Authorization": "Bearer test-token"}}}}).returncode, 0)
         original = path.read_bytes()
         descriptor = self.fixture("official/kit.yaml", "{}")
         direct = 'jq --slurp \'.[0] * .[1]\' "$cfg" "$frag"'
         stdin = 'cat "$cfg" "$frag" | jq --slurp \'.[0] * .[1]\''
-        for merge in (direct, stdin):
-            command = ('# MCP_GATEWAY_URL\n'
+        variants = ((direct, None), (stdin, "destroyed malformed"),
+                    ('echo "unrelated lifecycle failure" >&2; exit 23; ' + direct,
+                     "positive control.*exit 23; unrecognized hook failure"),
+                    ('echo "$MCP_SENTINEL_TOKEN_NAME $MCP_GATEWAY_URL" >&2; exit 23; ' + direct,
+                     "positive control.*exit 23; unrecognized hook failure"),
+                    ('exit 0; ' + direct, "positive control failed to merge"),
+                    ('jq --slurp \'.[1]\' "$cfg" "$frag"', "positive control failed to merge"),
+                    ('if [ "$(cat "$cfg")" = "[]" ]; then '
+                     'echo "unrelated malformed failure" >&2; exit 23; fi; ' + direct,
+                     "without a config validation diagnostic.*exit 23; unrecognized hook failure"))
+        for merge, failure in variants:
+            command = ('set -e\n[ -n "$MCP_GATEWAY_URL" ] || exit 0\n'
+                       '[ "$MCP_SENTINEL_TOKEN_NAME" = test-token ] || exit 24\n'
                        'cfg="$HOME/.config/opencode/opencode.json"\n'
                        'frag="$HOME/gateway.json"\n' + merge +
                        ' > "$cfg.tmp"\nmv "$cfg.tmp" "$cfg"\n')
             kit = {"capabilities": [{"type": "com.docker.sandbox/lifecycle@1",
-                                      "config": {"startup": [{"command": command}]}}]}
+                    "config": {"startup": [{"command": command, "user": str(os.getuid()),
+                    "env": ["MCP_GATEWAY_URL", "MCP_SENTINEL_TOKEN_NAME"]}]}}]}
             with self.subTest(merge=merge), \
                  patch.object(Path, "glob", return_value=[descriptor]), \
                  patch.object(smoke, "run", return_value=json.dumps(kit)), \
-                 patch.dict(os.environ, {"HOME": str(self.home),
+                 patch.dict(os.environ, {"HOME": str(self.home), "MCP_GATEWAY_URL": "",
+                     "MCP_SENTINEL_TOKEN_NAME": "",
                      "PATH": str(self.home / "tools/bin") + os.pathsep + os.environ["PATH"]}):
-                if merge == direct:
+                if failure is None:
                     smoke.check_gateway_merge_guard(path, key)
                 else:
-                    with self.assertRaisesRegex(RuntimeError, "destroyed malformed"):
+                    with self.assertRaisesRegex(RuntimeError, failure) as caught:
                         smoke.check_gateway_merge_guard(path, key)
+                    self.assertNotIn("test-token", str(caught.exception))
+                    self.assertNotIn("gateway.invalid", str(caught.exception))
                 self.assertEqual(path.read_bytes(), original)
+
+    def test_native_smoke_rejects_a_hook_for_another_user_before_mutating_config(self):
+        name, key = FORMATS["opencode"]
+        path = self.fixture(name, "{}")
+        descriptor = self.fixture("official/kit.yaml", "{}")
+        command = '# MCP_GATEWAY_URL opencode.json\nexit 23'
+        kit = {"capabilities": [{"type": "com.docker.sandbox/lifecycle@1", "config": {"startup": [{
+            "command": command, "user": "0" if os.getuid() != 0 else "nobody"}]}}]}
+        with patch.object(Path, "glob", return_value=[descriptor]), \
+             patch.object(smoke, "run", return_value=json.dumps(kit)):
+            with self.assertRaisesRegex(RuntimeError, "hook user.*differs from smoke user"):
+                smoke.check_gateway_merge_guard(path, key)
+        self.assertEqual(path.read_text(), "{}")
 
     def test_codex_existing_local_server_is_preserved(self):
         original = ('model = "custom"\n[mcp_servers.remote]\nurl = "https://remote.invalid"\n'

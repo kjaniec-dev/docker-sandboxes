@@ -11,6 +11,9 @@ kits:
 
 env:
   SBX_AGENT_KIND: junie
-  # configure-agent derives JVM proxy settings from SBX's runtime HTTP(S)_PROXY.
+  # Junie's JVM ignores HTTP_PROXY; SBX's local proxy endpoint is stable.
+  # Native environment inheritance also covers Junie installation and self-updates.
   JAVA_TOOL_OPTIONS: >-
     -Djavax.net.ssl.trustStore=/opt/sbx-dev/java/lib/security/cacerts
+    -Dhttp.proxyHost=gateway.docker.internal -Dhttp.proxyPort=3128
+    -Dhttps.proxyHost=gateway.docker.internal -Dhttps.proxyPort=3128

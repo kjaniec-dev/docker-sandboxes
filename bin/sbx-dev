@@ -74,8 +74,11 @@ command -v sbx >/dev/null 2>&1 || {
 sbx version --json | python3 "$ROOT/bin/check-sbx-version.py"
 export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
 
-repo_root="$(python3 "$ROOT/bin/audit-git.py" --discover)"
-repo_metadata_identity="$(python3 "$ROOT/bin/audit-git.py" --identity "$repo_root")"
+repo_metadata="$(python3 "$ROOT/bin/audit-git.py" --discover-identity)"
+{
+  IFS= read -r -d '' repo_root
+  IFS= read -r -d '' repo_metadata_identity
+} < <(python3 -c 'import json,sys; root,identity=json.loads(sys.argv[1]); sys.stdout.write(root+"\0"+identity+"\0")' "$repo_metadata")
 # Keep this shell alive so failed provisioning, agent exits and catchable signals
 # all pass through the same post-session check. This detects unsafe metadata;
 # writable .git remains shared with the host (see docs/git-metadata.md).
@@ -97,9 +100,33 @@ audit_on_exit() {
   exit "$status"
 }
 trap audit_on_exit EXIT
-# The agent receives Ctrl-C itself; keep waiting so its exit status is preserved.
-trap ':' INT
-trap 'exit 143' TERM
+sbx_pid=
+wait_interrupted=false
+forward_signal() {
+  if [[ -n "$sbx_pid" ]]; then
+    wait_interrupted=true
+    kill -s "$1" "$sbx_pid" 2>/dev/null || true
+  else
+    exit "$2"
+  fi
+}
+trap 'forward_signal INT 130' INT
+trap 'forward_signal TERM 143' TERM
+
+run_sbx() {
+  local status=0
+  # Bash can process traps while waiting for an asynchronous child. Explicitly
+  # preserve stdin and restore the INT disposition Bash gives background jobs.
+  python3 "$ROOT/bin/exec-sbx.py" "$@" <&0 &
+  sbx_pid=$!
+  while :; do
+    wait_interrupted=false
+    wait "$sbx_pid" && status=0 || status=$?
+    [[ "$wait_interrupted" == true ]] || break
+  done
+  sbx_pid=
+  return "$status"
+}
 
 if [[ -L "$repo_root/.worktrees" || -n "$(git -c core.fsmonitor=false -c core.hooksPath=/dev/null -C "$repo_root" ls-files -- .worktrees)" ]]; then
   echo "sbx-dev: .worktrees/ must be an untracked directory inside the repository" >&2
@@ -138,7 +165,7 @@ fi
 
 session_started=true
 # Apply/reconcile the declarative environment without opening an agent session.
-sbx env run "${files[@]}" --name "$name" --detach "${args[@]}"
+run_sbx env run "${files[@]}" --name "$name" --detach "${args[@]}"
 
 if [[ "$agent" == junie ]]; then
   brave=true
@@ -151,17 +178,17 @@ if [[ "$agent" == junie ]]; then
   placeholder="$(python3 "$ROOT/workloads/junie-dev/token-placeholder.py" "$name")"
   exec_args=(env exec --name "$name" "${args[@]}" --env "JUNIE_API_KEY=$placeholder")
   [[ ! -t 0 || ! -t 1 ]] || exec_args+=(-it)
-  sbx "${exec_args[@]}" "${files[@]}" -- junie "$@"
+  run_sbx "${exec_args[@]}" "${files[@]}" -- junie "$@"
 elif [[ "$profile:$agent" == client:claude ]]; then
   placeholder="$(python3 "$ROOT/workloads/claude-dev/token-placeholder.py" "$name" "$CLOUD_ML_REGION")"
   exec_args=(env exec --name "$name" "${args[@]}" --env "ANTHROPIC_AUTH_TOKEN=$placeholder")
   [[ ! -t 0 || ! -t 1 ]] || exec_args+=(-it)
-  sbx "${exec_args[@]}" "${files[@]}" -- claude --dangerously-skip-permissions "$@"
+  run_sbx "${exec_args[@]}" "${files[@]}" -- claude --dangerously-skip-permissions "$@"
 else
   run_args=(run --name "$name")
   if (($# > 0)); then
-    sbx "${run_args[@]}" -- "$@"
+    run_sbx "${run_args[@]}" -- "$@"
   else
-    sbx "${run_args[@]}"
+    run_sbx "${run_args[@]}"
   fi
 fi

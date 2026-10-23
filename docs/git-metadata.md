@@ -10,8 +10,13 @@ to the terminal. `safe.directory` does not protect an owned checkout from this a
 `bin/sbx-dev` calls `bin/audit-git.py` before any repository Git operations and again on shell exit,
 including failed provisioning, failed agent sessions, INT and TERM. The shell waits for SBX
 instead of replacing itself with `exec`. An unsafe preflight prevents launch; an unsafe postflight
-fails a successful session. An existing nonzero child exit status is preserved (Ctrl-C reaches the
-agent, and the launcher reports the agent's own exit status).
+fails a successful session. An existing nonzero child exit status is preserved.
+Discovery and metadata identity capture share one preflight audit. While provisioning
+or running SBX, the launcher forwards INT/TERM promptly and waits for the child to
+finish before auditing, including metadata written during child shutdown. A child
+that handles a signal and exits successfully keeps its successful status unless
+the audit fails. The execution helper restores interactive signal dispositions
+that Bash otherwise ignores for asynchronous jobs, and preserves standard input.
 
 When the postflight audit fails, the launcher runs `sbx stop <name>` and renames `.git` to
 `.git.sbx-quarantine-<UTC timestamp>-<pid>`, so a Git-aware prompt or IDE cannot execute planted
@@ -26,11 +31,20 @@ as fsmonitor, hooks paths, SSH commands, pagers, editors, filters, textconv, dif
 drivers, shell aliases, aliases injecting global Git options, configured hooks, trailers,
 credential helpers, signing programs, `protocol.*.allow`, remote-helper URLs (`transport::address`,
 `remote.*.vcs`, including `url.*.insteadOf` spellings), `submodule.*.update = !…` and
-`sendemail`/`browser`/`man` commands. It inspects main, worktree and
-submodule metadata, rejects non-sample hooks regardless of executable mode, rejects metadata
-symlinks, checks administrative routing paths and detects replacement of the main `.git` directory.
+`sendemail`/`browser`/`man` commands, absolute SMTP executable paths, manual/browser executable
+paths and template directories. Ordinary remote URLs and URL rewrites remain usable.
+It inspects main, worktree and submodule metadata, rejects non-sample hook files regardless of
+executable mode, rejects metadata symlinks, checks administrative routing paths and detects
+replacement of the main `.git` directory. Real hook subdirectories can store disabled hooks;
+their contents are still checked for symlinks.
+Linked worktrees outside the main checkout remain supported when launching from the main
+checkout. Their administrative `gitdir` files are backpointers and are never followed to external
+files. Local `config.worktree` files are still audited; forward routing escapes are rejected,
+and stale or empty `commondir` targets receive an explicit diagnostic.
+Discovery and the audited directory identity come from one `--discover-identity` invocation,
+which emits a JSON array containing the repository root and metadata identity.
 It never invokes repository hooks, filters or fsmonitor to inspect those files. Diagnostics identify
-the file/key without printing its potentially secret command value.
+the file/key without printing its potentially secret command value or URL rewrite base.
 
 Directories under `.worktrees/` are audited because that is where agents create worktrees and where
 you `cd` to review them. Each must be a genuine linked worktree: `.git` is a plain file whose
@@ -55,14 +69,16 @@ requires separating host Git metadata from sandbox-writable metadata.
 The setting policy covers known command-valued Git options; new Git command integrations require
 review and corresponding regression coverage.
 
-On failure, metadata is left intact for trusted inspection; it is not automatically deleted or
-rewritten. Stop the sandbox with native `sbx stop <name>`, disable Git-aware prompts and inspect the
-reported files using a trusted editor outside the checkout before running host Git again. An audit
-failure does not make returning to a Git-aware prompt safe. Review local config and non-sample
-hooks, repair them, then rerun `python3 /trusted/path/to/bin/audit-git.py /absolute/project/path`.
+On postflight failure, the launcher stops the sandbox and quarantines metadata as described above;
+preflight failures leave metadata in place. Disable Git-aware prompts and inspect the reported files
+using a trusted editor outside the checkout before running host Git again. A preflight audit failure
+does not make returning to a Git-aware prompt safe. Review local config and non-sample hooks,
+repair them, restore quarantined metadata to `.git` when applicable, then rerun
+`python3 /trusted/path/to/bin/audit-git.py /absolute/project/path`.
 
 Keep the launcher checkout, its audit helper, and machine-local SBX overlays outside any workspace
 mounted into an untrusted agent: a guard that the agent can edit cannot establish host trust.
 
 Regression coverage uses disposable real Git repositories and an SBX boundary stub:
+`python3 -m unittest discover -s tests -p test_git_audit.py -v` and
 `python3 -m unittest discover -s tests -p test_behavior.py -v`.

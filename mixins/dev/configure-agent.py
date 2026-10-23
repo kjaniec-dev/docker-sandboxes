@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Reconcile local Serena and Junie JVM proxy settings from native SBX metadata."""
+"""Reconcile sandbox-local Serena MCP settings from native SBX metadata."""
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import tomllib
-from urllib.parse import urlsplit
 
 
 def load_json(path):
@@ -45,66 +44,9 @@ def register_json(path, key, server, gateway=None):
             os.unlink(temporary)
 
 
-def configure_junie_proxy(home, environment):
-    # Junie's OkHttp MCP transport uses Java's proxy selector, not HTTP_PROXY.
-    # Configure the official jpackage launcher rather than replacing its entrypoint.
-    options = []
-    http = environment.get("HTTP_PROXY") or environment.get("http_proxy")
-    for scheme, address in (("http", http), ("https", environment.get("HTTPS_PROXY")
-                            or environment.get("https_proxy") or http)):
-        if not address:
-            continue
-        try:
-            proxy = urlsplit(address)
-            if (proxy.scheme != "http" or not proxy.hostname or proxy.username
-                    or proxy.password or proxy.query or proxy.fragment
-                    or proxy.path not in ("", "/")
-                    or any(c.isspace() or c in "\"'" for c in proxy.hostname)):
-                raise ValueError()
-            port = proxy.port or 80
-        except ValueError:
-            # Proxy URLs may contain credentials; never echo their value.
-            raise SystemExit(f"sbx-dev: invalid native {scheme} proxy for Junie's JVM") from None
-        options.extend((f"java-options=-D{scheme}.proxyHost={proxy.hostname}\n",
-                        f"java-options=-D{scheme}.proxyPort={port}\n"))
-    data = Path(environment.get("JUNIE_DATA") or home / ".local/share/junie")
-    configs = sorted((data / "versions").glob("*/junie-app/lib/app/junie.cfg"))
-    if options and not configs:
-        raise SystemExit("sbx-dev: Junie JVM launcher configuration not found")
-    begin, end = "# sbx-dev native proxy begin\n", "# sbx-dev native proxy end\n"
-    for path in configs:
-        original = path.read_text()
-        before, separator, after = original.partition(begin)
-        if separator:
-            _, separator, after = after.partition(end)
-            if not separator:
-                raise SystemExit(f"sbx-dev: incomplete native proxy block in {path}")
-        else:
-            after = ""
-        updated = before + after
-        section = "[JavaOptions]\n"
-        if section not in updated:
-            raise SystemExit(f"sbx-dev: missing JavaOptions section in {path}")
-        if options:
-            updated = updated.replace(section, section + begin + "".join(options) + end, 1)
-        if updated == original:
-            continue
-        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-        try:
-            with os.fdopen(fd, "w") as stream:
-                stream.write(updated)
-            os.chmod(temporary, path.stat().st_mode & 0o777)
-            os.replace(temporary, path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
-
-
 def main():
     agent = os.environ.get("SBX_AGENT_KIND", "")
     home = Path.home()
-    if agent == "junie":
-        configure_junie_proxy(home, os.environ)
     command = ["serena", "start-mcp-server", f"--context={'codex' if agent == 'codex' else 'ide-assistant'}",
                "--project-from-cwd"]
     if agent == "codex":

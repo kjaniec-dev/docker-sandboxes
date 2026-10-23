@@ -145,18 +145,19 @@ def check_serena(command, workspace):
 
 def check_junie_gateway():
     """Exercise Junie's actual JVM MCP transport, without making a model request."""
-    data = Path(os.environ.get("JUNIE_DATA") or Path.home() / ".local/share/junie")
-    cfg = data / "current/junie-app/lib/app/junie.cfg"
-    check(cfg.is_file(), "Junie's native JVM launcher configuration is missing")
-    settings = cfg.read_text().splitlines()
+    # Probe JVM inheritance, rather than a version/current launcher pathname. This
+    # covers a freshly installed or updated runtime without rewriting vendor files.
+    result = subprocess.run(["java", "-XshowSettings:properties", "-version"],
+                            check=True, text=True, capture_output=True, timeout=30)
+    properties = dict(re.findall(r"^\s+([\w.]+) = (.*)$", result.stderr, re.MULTILINE))
     http = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
     for scheme, address in (("http", http), ("https", os.environ.get("HTTPS_PROXY")
                             or os.environ.get("https_proxy") or http)):
         check(address, f"Native SBX {scheme} proxy is missing")
         proxy = urlsplit(address)
-        check(f"java-options=-D{scheme}.proxyHost={proxy.hostname}" in settings
-              and f"java-options=-D{scheme}.proxyPort={proxy.port or 80}" in settings,
-              f"Junie's native {scheme} JVM settings differ from the SBX runtime proxy")
+        check(properties.get(f"{scheme}.proxyHost") == proxy.hostname
+              and properties.get(f"{scheme}.proxyPort") == str(proxy.port or 80),
+              f"Junie's inherited {scheme} JVM settings differ from the SBX runtime proxy")
     logs = Path.home() / ".junie/logs"
     before = set(logs.glob("*.log"))
     master, slave = pty.openpty()
@@ -206,16 +207,73 @@ def check_gateway_merge_guard(path, key):
             for hook in capability.get("config", {}).get("startup", []):
                 command = hook.get("command", "")
                 if "MCP_GATEWAY_URL" in command and path.name in command:
-                    hooks.append(command)
+                    hooks.append(hook)
     check(len(hooks) == 1, "Cannot identify the installed official gateway hook; review jq protection")
-    original = path.read_bytes()
+    import pwd
+    hook = hooks[0]
+    user = str(hook.get("user", "0"))
     try:
+        account = pwd.getpwuid(int(user)) if user.isdecimal() else pwd.getpwnam(user)
+    except KeyError:
+        raise RuntimeError(f"Installed official gateway hook has an unknown user: {user}") from None
+    check(account.pw_uid == os.getuid(),
+          f"Gateway hook user {user} differs from smoke user {os.getuid()}; run smoke as the hook user")
+    original = path.read_bytes()
+    config = json.loads(original)
+    gateway = config[key]["mcp-gateway"]
+    url = gateway.get("url") or gateway.get("serverUrl")
+    authorization = gateway.get("headers", {}).get("Authorization", "")
+    check(url and authorization.startswith("Bearer "),
+          "Cannot reconstruct native gateway hook environment from the effective configuration")
+    token = authorization.removeprefix("Bearer ")
+    # SBX exec does not inject the lifecycle-only gateway variables. Recover the
+    # native values from the installed config and honor the hook's declared env.
+    native = {**os.environ, "MCP_GATEWAY_URL": url, "MCP_SENTINEL_TOKEN_NAME": token}
+    base = ("PATH", "HOME", "USER", "TERM", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+            "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR",
+            "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
+    env = {name: native[name] for name in (*base, *hook.get("env", [])) if name in native}
+    env.update(HOME=str(Path.home()), USER=account.pw_name)
+
+    def invoke():
+        result = subprocess.run(["sh", "-c", hook["command"]], env=env,
+                                capture_output=True, text=True, timeout=30)
+        # jq may echo config excerpts (including auth headers) in its errors.
+        # Report categories and status without publishing raw hook output.
+        if "sbx-dev: cannot validate" in result.stderr or "sbx-dev: expected" in result.stderr:
+            detail = "protected config validator rejected input"
+        elif "jq: parse error:" in result.stderr:
+            detail = "jq rejected malformed JSON"
+        elif "jq: error" in result.stderr:
+            detail = "jq reported an input or filter error"
+        else:
+            detail = "unrecognized hook failure" if result.stderr else "no stderr diagnostic"
+        return result, f"exit {result.returncode}; {detail}"
+
+    try:
+        config[key].pop("mcp-gateway")
+        config[key]["sbx-smoke-user-server"] = {"command": "sbx-smoke-user-command"}
+        path.write_text(json.dumps(config))
+        result, diagnostic = invoke()
+        check(result.returncode == 0, f"Gateway hook positive control failed ({diagnostic})")
+        try:
+            merged = json.loads(path.read_text())
+        except (ValueError, OSError):
+            raise RuntimeError("Gateway hook positive control produced unreadable config") from None
+        expected = {**config, key: {**config[key], "mcp-gateway": gateway}}
+        check(merged == expected,
+              "Gateway hook positive control failed to merge the gateway and preserve user settings")
         for bad in ("{broken", "[]", json.dumps({key: [{"command": "user-server"}]}),
                     json.dumps({key: None})):
             path.write_text(bad)
-            result = subprocess.run(["sh", "-ec", hooks[0]], capture_output=True, text=True, timeout=30)
+            result, diagnostic = invoke()
             check(result.returncode != 0 and path.read_text() == bad,
-                  "Installed official gateway hook destroyed malformed MCP configuration")
+                  f"Installed official gateway hook destroyed malformed MCP configuration ({diagnostic})")
+            check("sbx-dev: cannot validate" in result.stderr or "sbx-dev: expected" in result.stderr
+                  or (bad == "{broken" and "jq: parse error:" in result.stderr)
+                  or (bad == "[]" and "jq: error" in result.stderr
+                      and "cannot be multiplied" in result.stderr),
+                  f"Gateway hook failed without a config validation diagnostic ({diagnostic})")
     finally:
         path.write_bytes(original)
         path.with_name(path.name + ".tmp").unlink(missing_ok=True)
