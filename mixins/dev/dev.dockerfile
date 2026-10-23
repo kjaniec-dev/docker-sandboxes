@@ -39,13 +39,17 @@ RUN mkdir -p /opt/sbx-dev/bin /opt/sbx-dev/java /opt/sbx-dev/maven \
 RUN npm install -g pnpm@10 corepack @playwright/cli \
  && node /opt/sbx-dev/npm/lib/node_modules/@playwright/cli/node_modules/playwright/cli.js install chromium \
  && npm cache clean --force
-RUN export GOBIN=/opt/sbx-dev/bin CGO_ENABLED=0 \
- && go install golang.org/x/tools/gopls@latest \
- && go install golang.org/x/tools/cmd/goimports@latest \
- && go install honnef.co/go/tools/cmd/staticcheck@latest \
- && go install golang.org/x/vuln/cmd/govulncheck@latest \
- && go install github.com/go-delve/delve/cmd/dlv@latest \
- && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
+# Pinned to versions that build with the golang:1.26 base; @latest pulls Go 1.27 toolchains and exhausts builder disk.
+RUN export GOBIN=/opt/sbx-dev/bin CGO_ENABLED=0 GOTOOLCHAIN=local \
+ && go install golang.org/x/tools/gopls@v0.23.0 \
+ && go clean -cache \
+ && go install golang.org/x/tools/cmd/goimports@v0.52.0 \
+ && go install honnef.co/go/tools/cmd/staticcheck@v0.8.2 \
+ && go clean -cache \
+ && go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 \
+ && go install github.com/go-delve/delve/cmd/dlv@v1.27.2 \
+ && go clean -cache \
+ && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 \
  && go clean -cache -modcache
 COPY export-tools.py /tmp/export-tools.py
 RUN python3 /tmp/export-tools.py \
