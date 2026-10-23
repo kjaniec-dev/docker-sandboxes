@@ -32,7 +32,7 @@ class AdapterTests(unittest.TestCase):
 
     def invoke(self, agent, extra=None):
         env = os.environ.copy()
-        for key in ("CODEX_HOME", "WORKSPACE_DIR"):
+        for key in ("CODEX_HOME", "WORKSPACE_DIR", "JUNIE_DATA", "HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
             env.pop(key, None)
         return subprocess.run([sys.executable, str(ADAPTER)], capture_output=True, text=True,
                               env={**env, "HOME": str(self.home), "SBX_AGENT_KIND": agent,

@@ -2,10 +2,12 @@
 """Detect command-bearing repository Git metadata without executing repository Git."""
 import os
 from pathlib import Path
+import re
 import shlex
 import stat
 import subprocess
 import sys
+import time
 
 
 class UnsafeMetadata(Exception):
@@ -18,8 +20,18 @@ def regular(path, directory=False):
         raise UnsafeMetadata(f"{path}: expected a real {'directory' if directory else 'file'}")
 
 
+# "transport::address" URLs make Git run git-remote-<transport>; ext:: runs a shell command.
+REMOTE_HELPER = re.compile(r"^[a-z0-9+.-]+::", re.IGNORECASE)
+
+
 def command_key(key, value):
     key = key.lower()
+    if key.startswith("url.") and REMOTE_HELPER.match(key[4:]):
+        return True
+    if key.endswith((".url", ".pushurl", ".insteadof", ".pushinsteadof")) and REMOTE_HELPER.match(value):
+        return True
+    if key.startswith("submodule.") and key.endswith(".update"):
+        return value.startswith("!")
     if key.startswith("alias."):
         try:
             words = shlex.split(value)
@@ -42,6 +54,11 @@ def command_key(key, value):
         or (key.startswith(("difftool.", "mergetool.")) and key.endswith((".cmd", ".command", ".path")))
         or (key.startswith(("trailer.", "tar.")) and key.endswith((".cmd", ".command")))
         or (key.startswith("hook.") and key.endswith(".command"))
+        or key == "protocol.allow"
+        or (key.startswith("protocol.") and key.endswith(".allow"))
+        or (key.startswith("sendemail.") and key.endswith("cmd"))
+        or (key.startswith(("browser.", "man.")) and key.endswith(".cmd"))
+        or (key.startswith("remote.") and key.endswith(".vcs"))
         or (key.startswith("gpg.") and key.endswith(".program"))
         or (key.startswith("remote.") and key.endswith((".uploadpack", ".receivepack", ".proxy")))
         or key.startswith(("include.", "includeif."))
@@ -74,6 +91,46 @@ def audit_config(path, root):
             target = target if target.is_absolute() else path.parent / target
             if not target.resolve().is_relative_to(root):
                 raise UnsafeMetadata(f"{path}: core.worktree escapes the workspace")
+
+
+def audit_worktrees(root):
+    """Allow only genuine linked worktrees under .worktrees/.
+
+    Host Git reads the config of any repository the user enters, so a nested
+    clone, a bare repository or a worktree redirected elsewhere would execute
+    commands on `cd .worktrees/x && git status`.
+    """
+    base = root / ".worktrees"
+    if not os.path.lexists(base):
+        return
+    regular(base, directory=True)
+    registry = (root / ".git" / "worktrees").resolve()
+    pending = [base]
+    while pending:
+        directory = pending.pop()
+        for path in directory.iterdir():
+            mode = path.lstat().st_mode
+            if stat.S_ISLNK(mode):
+                raise UnsafeMetadata(f"{path}: symlink in .worktrees")
+            if path.name == ".git":
+                raise UnsafeMetadata(f"{path}: .git directly under a non-worktree directory")
+            if not stat.S_ISDIR(mode):
+                continue
+            marker = path / ".git"
+            if os.path.lexists(marker):
+                regular(marker)
+                text = marker.read_text()
+                if not text.startswith("gitdir: ") or "\n" in text.strip():
+                    raise UnsafeMetadata(f"{marker}: malformed worktree link")
+                target = Path(text[len("gitdir: "):].strip())
+                target = target if target.is_absolute() else path / target
+                regular(target, directory=True)
+                if target.parent.resolve() != registry:
+                    raise UnsafeMetadata(f"{marker}: worktree link does not point into the repository's worktree registry")
+            elif all(os.path.lexists(path / name) for name in ("HEAD", "objects", "refs")):
+                raise UnsafeMetadata(f"{path}: bare repository in .worktrees")
+            else:
+                pending.append(path)
 
 
 def audit(root, expected_identity=None):
@@ -121,11 +178,21 @@ def audit(root, expected_identity=None):
                 raise UnsafeMetadata(f"{path}: metadata symlink")
             elif path.is_dir():
                 pending.append(path)
+    audit_worktrees(root)
     return identity
+
+
+def quarantine(root):
+    """Hide unsafe metadata from host Git and prompts without deleting anything."""
+    target = root / f".git.sbx-quarantine-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{os.getpid()}"
+    os.rename(root / ".git", target)
+    return target
 
 
 def discover():
     for path in (Path.cwd(), *Path.cwd().parents):
+        if any(path.glob(".git.sbx-quarantine-*")):
+            raise UnsafeMetadata(f"{path}: quarantined Git metadata present; inspect it and restore or remove it")
         if (path / ".git").exists() or (path / ".git").is_symlink():
             if not (path / ".git").is_dir():
                 raise UnsafeMetadata("linked worktree: launch from the main Git checkout")
@@ -139,6 +206,9 @@ def main():
             raise UnsafeMetadata("usage: audit-git.py <--discover|--identity root|root [identity]>")
         if any(os.environ.get(key) for key in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")):
             raise UnsafeMetadata("unset Git repository-routing environment variables before launching")
+        if sys.argv[1] == "--quarantine" and len(sys.argv) == 3:
+            print(quarantine(Path(sys.argv[2])))
+            return 0
         if sys.argv[1] == "--identity":
             if len(sys.argv) != 3:
                 raise UnsafeMetadata("--identity requires a repository root")
