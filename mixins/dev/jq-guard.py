@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Reject malformed agent maps whenever jq receives a protected config path.
 
-Options and filter spelling belong to the official kits. Inspect resolved file
-arguments instead of matching one invocation. Stdin-only input has no path; the
+Options and filter spelling belong to the official kits. The shell launcher
+selects protected file identities before starting this validator. Stdin has no path; the
 native smoke probe separately checks the installed official hook contract.
 """
 import json
@@ -12,16 +12,17 @@ import sys
 
 def main():
     protected = {
-        (Path.home() / relative).resolve(): key
+        Path.home() / relative: key
         for relative, key in ((".gemini/config/mcp_config.json", "mcpServers"),
                               (".config/opencode/opencode.json", "mcp"))
     }
     for argument in sys.argv[1:]:
         key = None
         try:
-            path = Path(argument).resolve()
-            key = protected.get(path)
-            if key is None or not path.exists():
+            path = Path(argument)
+            key = next((key for target, key in protected.items()
+                        if target.exists() and path.samefile(target)), None)
+            if key is None:
                 continue
             value = json.loads(path.read_text())
         except (OSError, ValueError) as exc:

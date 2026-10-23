@@ -10,8 +10,15 @@ def write_wrapper(root, name, target):
     wrapper = root / "bin" / name
     guard = ""
     if name == "jq":
-        guard = ('"' + str(root / "serena/bin/python") + '" "' + str(root / "jq-guard.py") +
-                 '" "$@" || exit $?\n')
+        # Shell file identity handles relative paths and aliases without starting
+        # Python for unrelated jq calls, options or filter expressions.
+        guard = ('for sbx_jq_arg do\n'
+                 '  if [ "$sbx_jq_arg" -ef "$HOME/.gemini/config/mcp_config.json" ] ||\n'
+                 '     [ "$sbx_jq_arg" -ef "$HOME/.config/opencode/opencode.json" ]; then\n'
+                 '    "' + str(root / "serena/bin/python") + '" "' + str(root / "jq-guard.py") +
+                 '" "$sbx_jq_arg" || exit $?\n'
+                 '  fi\n'
+                 'done\n')
     wrapper.write_text('#!/bin/sh\nexport LD_LIBRARY_PATH="' + str(root / "lib") +
                        '${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\n'
                        'export FONTCONFIG_FILE="' + str(root / "fonts.conf") +

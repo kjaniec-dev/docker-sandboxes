@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Detect command-bearing repository Git metadata without executing repository Git."""
+import json
 import os
 from pathlib import Path
 import re
@@ -25,6 +26,14 @@ REMOTE_HELPER = re.compile(r"^[a-z0-9+.-]+::", re.IGNORECASE)
 
 
 def command_key(key, value):
+    # Git folds section and variable names, but preserves subsection case.
+    section, _, rest = key.partition(".")
+    subsection, separator, variable = rest.rpartition(".")
+    section = section.lower()
+    variable = (variable if separator else rest).lower()
+    if section == "sendemail" and variable == "smtpserver":
+        # git-send-email treats absolute paths as sendmail executables.
+        return value.startswith("/")
     key = key.lower()
     if key.startswith("url.") and REMOTE_HELPER.match(key[4:]):
         return True
@@ -46,6 +55,7 @@ def command_key(key, value):
             "diff.external", "gpg.program", "ssh.variant", "core.alternaterefscommand",
             "gc.recentobjectshook", "interactive.difffilter",
             "gpg.ssh.defaultkeycommand",
+            "init.templatedir",
         }
         or key.startswith(("filter.", "pager."))
         or (key.startswith("credential.") and key.endswith(".helper"))
@@ -57,10 +67,9 @@ def command_key(key, value):
         or key == "protocol.allow"
         or (key.startswith("protocol.") and key.endswith(".allow"))
         or (key.startswith("sendemail.") and key.endswith("cmd"))
-        or (key.startswith(("browser.", "man.")) and key.endswith(".cmd"))
-        or (key.startswith("remote.") and key.endswith(".vcs"))
+        or (section in {"man", "browser"} and variable in {"cmd", "path"})
         or (key.startswith("gpg.") and key.endswith(".program"))
-        or (key.startswith("remote.") and key.endswith((".uploadpack", ".receivepack", ".proxy")))
+        or (key.startswith("remote.") and key.endswith((".uploadpack", ".receivepack", ".proxy", ".vcs")))
         or key.startswith(("include.", "includeif."))
     )
 
@@ -85,6 +94,9 @@ def audit_config(path, root):
         value = os.fsdecode(value)
         if command_key(key, value):
             # Never print values: they can contain credentials or terminal escapes.
+            # Rewrite bases live in keys and can contain commands/credentials too.
+            if key.lower().startswith("url."):
+                key = "url.<base>." + key.rsplit(".", 1)[-1]
             raise UnsafeMetadata(f"{path}: prohibited setting {ascii(key)}")
         if key.lower() == "core.worktree":
             target = Path(value)
@@ -133,6 +145,24 @@ def audit_worktrees(root):
                 pending.append(path)
 
 
+def audit_hooks(directory):
+    regular(directory, directory=True)
+    pending = [directory]
+    while pending:
+        current = pending.pop()
+        for hook in current.iterdir():
+            if hook.is_symlink():
+                raise UnsafeMetadata(f"{hook}: metadata symlink")
+            if hook.is_dir():
+                # Git executes files directly under hooks, not saved subdirectories.
+                # Still inspect those directories for metadata symlinks.
+                pending.append(hook)
+            else:
+                regular(hook)
+                if current == directory and not hook.name.endswith(".sample"):
+                    raise UnsafeMetadata(f"{hook}: non-sample Git hook")
+
+
 def audit(root, expected_identity=None):
     metadata = root / ".git"
     regular(metadata, directory=True)
@@ -160,15 +190,21 @@ def audit(root, expected_identity=None):
             if path.name in {"config", "config.worktree"}:
                 audit_config(path, root)
             elif path.name == "hooks":
-                regular(path, directory=True)
-                for hook in path.iterdir():
-                    regular(hook)
-                    if not hook.name.endswith(".sample"):
-                        raise UnsafeMetadata(f"{hook}: non-sample Git hook")
+                audit_hooks(path)
             elif path.name in {"commondir", "gitdir"}:
                 regular(path)
-                target = Path(path.read_text().strip())
+                if path.name == "gitdir" and path.parent.parent.name == "worktrees":
+                    # worktrees/<id>/gitdir points BACK to a linked checkout's
+                    # .git file, which may be external or temporarily unavailable.
+                    # Never read or traverse that external backpointer target.
+                    continue
+                routing = path.read_text().strip()
+                if path.name == "commondir" and not routing:
+                    raise UnsafeMetadata(f"{path}: stale commondir target (empty routing file)")
+                target = Path(routing)
                 target = target if target.is_absolute() else path.parent / target
+                if path.name == "commondir" and not target.is_dir():
+                    raise UnsafeMetadata(f"{path}: stale commondir target (missing or not a directory)")
                 boundary = metadata if path.name == "commondir" else root
                 if (path.name == "commondir" and path.parent == metadata) or not target.resolve().is_relative_to(boundary):
                     raise UnsafeMetadata(f"{path}: Git metadata routing escapes the workspace")
@@ -203,7 +239,7 @@ def discover():
 def main():
     try:
         if len(sys.argv) not in {2, 3}:
-            raise UnsafeMetadata("usage: audit-git.py <--discover|--identity root|root [identity]>")
+            raise UnsafeMetadata("usage: audit-git.py <--discover|--discover-identity|--identity root|--quarantine root|root [identity]>")
         if any(os.environ.get(key) for key in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")):
             raise UnsafeMetadata("unset Git repository-routing environment variables before launching")
         if sys.argv[1] == "--quarantine" and len(sys.argv) == 3:
@@ -214,9 +250,14 @@ def main():
                 raise UnsafeMetadata("--identity requires a repository root")
             print(audit(Path(sys.argv[2])))
             return 0
-        root = discover() if sys.argv[1] == "--discover" else Path(sys.argv[1])
-        audit(root, sys.argv[2] if len(sys.argv) == 3 else None)
-        if sys.argv[1] == "--discover":
+        discovering = sys.argv[1] in {"--discover", "--discover-identity"}
+        if discovering and len(sys.argv) != 2:
+            raise UnsafeMetadata(f"{sys.argv[1]} does not accept arguments")
+        root = discover() if discovering else Path(sys.argv[1])
+        identity = audit(root, sys.argv[2] if len(sys.argv) == 3 else None)
+        if sys.argv[1] == "--discover-identity":
+            print(json.dumps([str(root), identity]))
+        elif sys.argv[1] == "--discover":
             print(root)
     except (UnsafeMetadata, OSError, ValueError) as error:
         print(f"sbx-dev: Git metadata audit failed: {error}", file=sys.stderr)

@@ -1,8 +1,13 @@
-"""Validate selection of public native metadata; actual tokens never leave SBX."""
+"""Validate native public metadata and Junie JVM environment inheritance."""
 import importlib.util
 from pathlib import Path
 import json
 import tempfile
+import os
+import re
+import shutil
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -13,9 +18,6 @@ spec.loader.exec_module(module)
 
 
 adapter_path = Path(__file__).resolve().parents[1] / "mixins/dev/configure-agent.py"
-adapter_spec = importlib.util.spec_from_file_location("junie_adapter", adapter_path)
-adapter = importlib.util.module_from_spec(adapter_spec)
-adapter_spec.loader.exec_module(adapter)
 
 
 def entry(placeholder="sbx-cs-public"):
@@ -53,54 +55,54 @@ class NativePlaceholderTests(unittest.TestCase):
 
 
 class NativeJvmProxyTests(unittest.TestCase):
-    def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.home = Path(temporary.name)
-        self.config = (self.home / ".local/share/junie/versions/3294.5"
-                       / "junie-app/lib/app/junie.cfg")
-        self.config.parent.mkdir(parents=True)
-        self.original = ("[Application]\napp.mainclass=official.Main\n\n[JavaOptions]\n"
-                         "java-options=-Djpackage.app-version=3294.5\n"
-                         "java-options=-Xmx2g\n")
-        self.config.write_text(self.original)
+    def test_shared_mcp_setup_does_not_depend_on_or_modify_junie_installation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            config = home / ".local/share/junie/current/junie-app/lib/app/junie.cfg"
+            for content in (None, "unrecognized future Junie launcher format\n"):
+                with self.subTest(installed=content is not None):
+                    if content is not None:
+                        config.parent.mkdir(parents=True)
+                        config.write_text(content)
+                    result = subprocess.run([sys.executable, str(adapter_path)], text=True,
+                        capture_output=True, env={**os.environ, "HOME": str(home),
+                        "SBX_AGENT_KIND": "junie", "HTTP_PROXY": "http://gateway.docker.internal:3128",
+                        "MCP_GATEWAY_URL": "http://mcp-gateway.docker.internal/mcp",
+                        "MCP_SENTINEL_TOKEN_NAME": "public-sentinel"})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    servers = json.loads((home / ".junie/mcp/mcp.json").read_text())["mcpServers"]
+                    self.assertIn("serena", servers)
+                    self.assertEqual(servers["mcp-gateway"]["url"],
+                                     "http://mcp-gateway.docker.internal/mcp")
+                    if content is not None:
+                        self.assertEqual(config.read_text(), content)
 
-    def test_native_runtime_proxy_reaches_jvm_and_reconciles_without_clobbering(self):
-        environment = {"HTTP_PROXY": "http://native-proxy.internal:4567",
-                       "HTTPS_PROXY": "http://tls-proxy.internal:5678"}
-        adapter.configure_junie_proxy(self.home, environment)
-        actual = self.config.read_text()
-        for option in ("http.proxyHost=native-proxy.internal", "http.proxyPort=4567",
-                       "https.proxyHost=tls-proxy.internal", "https.proxyPort=5678"):
-            self.assertIn("java-options=-D" + option + "\n", actual)
-        self.assertIn("app.mainclass=official.Main\n", actual)
-        self.assertIn("java-options=-Xmx2g\n", actual)
-        before = self.config.read_bytes()
-        adapter.configure_junie_proxy(self.home, environment)
-        self.assertEqual(self.config.read_bytes(), before)
-        adapter.configure_junie_proxy(self.home, {"http_proxy": "http://new-proxy.internal"})
-        actual = self.config.read_text()
-        self.assertNotIn("native-proxy.internal", actual)
-        self.assertNotIn("tls-proxy.internal", actual)
-        self.assertIn("java-options=-Dhttps.proxyHost=new-proxy.internal\n", actual)
-        self.assertIn("java-options=-Dhttp.proxyPort=80\n", actual)
-        adapter.configure_junie_proxy(self.home, {})
-        self.assertEqual(self.config.read_text(), self.original)
-
-    def test_malformed_proxy_fails_without_changing_launcher_or_leaking_credentials(self):
-        for proxy in ("garbage", "http://proxy:bad", "https://proxy:443",
-                      "http://name:private-password@proxy:4567", "http://bad host:4567"):
-            with self.subTest(proxy=proxy):
-                with self.assertRaisesRegex(SystemExit, "invalid native.*proxy") as error:
-                    adapter.configure_junie_proxy(self.home, {"HTTP_PROXY": proxy})
-                self.assertNotIn("private-password", str(error.exception))
-                self.assertEqual(self.config.read_text(), self.original)
-
-    def test_invalid_jvm_configuration_is_preserved(self):
-        self.config.write_text("[Application]\napp.mainclass=official.Main\n")
-        with self.assertRaisesRegex(SystemExit, "JavaOptions"):
-            adapter.configure_junie_proxy(self.home, {"HTTP_PROXY": "http://proxy:4567"})
-        self.assertEqual(self.config.read_text(), "[Application]\napp.mainclass=official.Main\n")
+    @unittest.skipUnless(shutil.which("java"), "Java required for JVM environment inheritance probe")
+    def test_profile_proxy_options_reach_new_jvm_without_installed_junie_configs(self):
+        # macOS exposes a java launcher even when no host JVM is installed.
+        available = subprocess.run(["java", "-version"], capture_output=True, timeout=30,
+            env={key: value for key, value in os.environ.items()
+                 if key not in {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"}})
+        if available.returncode:
+            self.skipTest("No working host JVM; native smoke probes the sandbox JVM")
+        profile = adapter_path.parents[2] / "env/personal/junie.sbxenv.yaml"
+        # Read this profile's folded scalar without adding a YAML dependency to offline tests.
+        match = re.search(r"^  JAVA_TOOL_OPTIONS: >-\n((?:    [^\n]*\n?)+)",
+                          profile.read_text(), re.MULTILINE)
+        self.assertIsNotNone(match, "Junie profile must declare its JVM launch environment")
+        options = " ".join(line.strip() for line in match[1].splitlines())
+        with tempfile.TemporaryDirectory() as temporary:
+            result = subprocess.run(["java", "-XshowSettings:properties", "-version"],
+                text=True, capture_output=True, cwd=temporary,
+                env={**os.environ, "JAVA_TOOL_OPTIONS": options})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            properties = dict(re.findall(r"^\s+([\w.]+) = (.*)$", result.stderr, re.MULTILINE))
+            self.assertEqual(properties.get("http.proxyHost"), "gateway.docker.internal")
+            self.assertEqual(properties.get("https.proxyHost"), "gateway.docker.internal")
+            self.assertEqual(properties.get("http.proxyPort"), "3128")
+            self.assertEqual(properties.get("https.proxyPort"), "3128")
+            self.assertEqual(properties.get("javax.net.ssl.trustStore"),
+                             "/opt/sbx-dev/java/lib/security/cacerts")
 
 
 if __name__ == "__main__":

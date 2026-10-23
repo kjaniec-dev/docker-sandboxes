@@ -87,12 +87,12 @@ capabilities:
           description: Reconcile tool, config ownership and Java CA workarounds
         - command: /opt/sbx-dev/serena/bin/python /opt/sbx-dev/configure-agent.py
           user: agent
-          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR, JUNIE_DATA, HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy]
+          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR]
           description: Configure sandbox-local Serena MCP
       startup:
         - command: /opt/sbx-dev/serena/bin/python /opt/sbx-dev/configure-agent.py
           user: agent
-          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR, JUNIE_DATA, HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy]
+          env: [SBX_AGENT_KIND, MCP_GATEWAY_URL, MCP_SENTINEL_TOKEN_NAME, CODEX_HOME, WORKSPACE_DIR]
           description: Reconcile sandbox-local Serena MCP
 
   - type: com.docker.sandbox/agent-context@1

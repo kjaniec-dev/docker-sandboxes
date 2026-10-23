@@ -3,8 +3,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 
 
@@ -29,6 +32,23 @@ class LauncherTests(unittest.TestCase):
         stub.write_text("#!/usr/bin/env python3\n" + '''import json, os, sys
 args = sys.argv[1:]
 stage = " ".join(args[:2]) if args[:1] == ["env"] else " ".join(args[:1])
+if stage == os.environ.get("SBX_TEST_WAIT_STAGE"):
+    from pathlib import Path
+    import signal, time
+    def stopped(number, frame):
+        time.sleep(0.1)
+        for name, value in json.loads(os.environ.get("SBX_TEST_SIGNAL_MUTATIONS", "[]")):
+            target = Path(name)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(value)
+        Path(os.environ["SBX_TEST_SIGNAL_LOG"]).write_text(str(number))
+        sys.exit(int(os.environ.get("SBX_TEST_SIGNAL_EXIT", str(128 + number))))
+    if not os.environ.get("SBX_TEST_DEFAULT_SIGNALS"):
+        signal.signal(signal.SIGINT, stopped)
+        signal.signal(signal.SIGTERM, stopped)
+    Path(os.environ["SBX_TEST_READY"]).write_text(str(os.getpid()))
+    while True:
+        signal.pause()
 if stage == os.environ.get("SBX_TEST_MUTATION_STAGE"):
     from pathlib import Path
     import signal
@@ -65,6 +85,9 @@ elif args[:3] == ["secret", "ls", "--global"]:
 elif args[:2] == ["env", "exec"]:
     sys.exit(int(os.environ.get("SBX_TEST_RUN_EXIT", "0")))
 elif args[:1] == ["run"]:
+    if os.environ.get("SBX_TEST_STDIN_LOG"):
+        from pathlib import Path
+        Path(os.environ["SBX_TEST_STDIN_LOG"]).write_text(sys.stdin.read())
     sys.exit(int(os.environ.get("SBX_TEST_RUN_EXIT", "0")))
 elif args[:1] == ["stop"]:
     pass
@@ -446,12 +469,71 @@ elif args[:1] != ["run"]:
         self.assertEqual(result.returncode, 17, result.stderr)
         self.assertIn("pre-commit", result.stderr)
 
-    def test_post_audit_runs_when_launcher_receives_term(self):
+    def signal_launcher(self, number, stage, extra=None):
+        ready, received = self.base / "ready", self.base / "received-signal"
+        ready.unlink(missing_ok=True)
+        received.unlink(missing_ok=True)
+        env = self.environ | {"SBX_TEST_WAIT_STAGE": stage, "SBX_TEST_READY": str(ready),
+                              "SBX_TEST_SIGNAL_LOG": str(received)} | (extra or {})
+        process = subprocess.Popen([str(ROOT / "bin/sbx-dev"), "codex"], cwd=self.repo,
+                                   env=env, text=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, start_new_session=True)
+        try:
+            deadline = time.monotonic() + 5
+            while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(ready.exists(), "SBX child did not become ready")
+            os.kill(process.pid, number)
+            stdout, stderr = process.communicate(timeout=3)
+            if not env.get("SBX_TEST_DEFAULT_SIGNALS"):
+                self.assertEqual(received.read_text(), str(number), "launcher must forward the signal")
+            return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+
+    def test_launcher_forwards_signals_and_audits_after_child_finishes(self):
         target = self.repo / ".git/hooks/pre-commit"
-        result = self.launch(env={"SBX_TEST_MUTATION_STAGE": "run", "SBX_TEST_SIGNAL": "SIGTERM",
-                                  "SBX_TEST_MUTATIONS": json.dumps([[str(target), "attack"]])})
-        self.assertEqual(result.returncode, 143, result.stderr)
-        self.assertIn("pre-commit", result.stderr)
+        for stage in ("env run", "run"):
+            for number in (signal.SIGINT, signal.SIGTERM):
+                with self.subTest(stage=stage, signal=number):
+                    result = self.signal_launcher(number, stage, {
+                        "SBX_TEST_SIGNAL_MUTATIONS": json.dumps([[str(target), "attack"]])})
+                    self.assertEqual(result.returncode, 128 + number, result.stderr)
+                    self.assertIn("pre-commit", result.stderr)
+                    self.assertFalse((self.repo / ".git").exists())
+                    self.assertEqual([call["argv"][0] for call in self.calls()].count("stop"), 1)
+                    self.restore_quarantine()
+                    target.unlink()
+                    self.reset_log()
+
+    def test_background_sbx_does_not_inherit_ignored_interrupt(self):
+        result = self.signal_launcher(signal.SIGINT, "run", {"SBX_TEST_DEFAULT_SIGNALS": "1"})
+        self.assertEqual(result.returncode, 130, result.stderr)
+
+    def test_sbx_child_keeps_launcher_stdin(self):
+        received = self.base / "stdin"
+        result = subprocess.run([str(ROOT / "bin/sbx-dev"), "codex"], cwd=self.repo,
+                                env=self.environ | {"SBX_TEST_STDIN_LOG": str(received)},
+                                input="interactive input\n", text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(received.read_text(), "interactive input\n")
+
+    def test_preflight_audits_metadata_only_once(self):
+        audit_log = self.base / "audits"
+        python = self.tools / "python3"
+        python.write_text(f"#!{sys.executable}\n" + '''import os, sys
+if sys.argv[1:2] and sys.argv[1].endswith("/audit-git.py"):
+    with open(os.environ["SBX_TEST_AUDIT_LOG"], "a") as stream:
+        stream.write(repr(sys.argv[2:]) + "\\n")
+os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
+''')
+        python.chmod(0o755)
+        result = self.launch(env={"SBX_TEST_AUDIT_LOG": str(audit_log)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(audit_log.read_text().splitlines()), 2,
+                         "one preflight audit and one postflight audit")
 
     def test_post_audit_rejects_replacement_git_directory(self):
         result = self.launch(env={"SBX_TEST_MUTATION_STAGE": "run",
@@ -551,7 +633,9 @@ elif args[:1] != ["run"]:
         self.assertEqual(list(self.repo.glob(".git.sbx-quarantine-*")), [])
 
     def test_agent_interrupt_does_not_override_agent_exit_status(self):
-        result = self.launch(env={"SBX_TEST_MUTATION_STAGE": "run", "SBX_TEST_SIGNAL": "SIGINT"})
+        # Model an agent that handles Ctrl-C successfully, with its handler ready
+        # before signaling the launcher so forwarding cannot race child startup.
+        result = self.signal_launcher(signal.SIGINT, "run", {"SBX_TEST_SIGNAL_EXIT": "0"})
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
