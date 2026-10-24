@@ -106,7 +106,7 @@ def audit_config(path, root):
 
 
 def audit_worktrees(root):
-    """Allow only genuine linked worktrees under .worktrees/.
+    """Audit linked worktrees and independent repositories under .worktrees/.
 
     Host Git reads the config of any repository the user enters, so a nested
     clone, a bare repository or a worktree redirected elsewhere would execute
@@ -116,20 +116,31 @@ def audit_worktrees(root):
     if not os.path.lexists(base):
         return
     regular(base, directory=True)
-    registry = (root / ".git" / "worktrees").resolve()
-    pending = [base]
+    pending = [(base, root, False)]
     while pending:
-        directory = pending.pop()
+        directory, owner, inside_repository = pending.pop()
         for path in directory.iterdir():
             mode = path.lstat().st_mode
+            if path.name.startswith(".git.sbx-quarantine-"):
+                raise UnsafeMetadata(f"{path}: quarantined Git metadata present; inspect it and restore or remove it")
             if stat.S_ISLNK(mode):
+                if inside_repository:
+                    # Source symlinks are ordinary checkout content; never follow them.
+                    continue
                 raise UnsafeMetadata(f"{path}: symlink in .worktrees")
             if path.name == ".git":
+                if inside_repository:
+                    # This repository's metadata was audited before entering its sources.
+                    continue
                 raise UnsafeMetadata(f"{path}: .git directly under a non-worktree directory")
             if not stat.S_ISDIR(mode):
                 continue
             marker = path / ".git"
             if os.path.lexists(marker):
+                if stat.S_ISDIR(marker.lstat().st_mode):
+                    audit(path, scan_worktrees=False)
+                    pending.append((path, path, True))
+                    continue
                 regular(marker)
                 text = marker.read_text()
                 if not text.startswith("gitdir: ") or "\n" in text.strip():
@@ -137,12 +148,13 @@ def audit_worktrees(root):
                 target = Path(text[len("gitdir: "):].strip())
                 target = target if target.is_absolute() else path / target
                 regular(target, directory=True)
-                if target.parent.resolve() != registry:
+                if target.parent.resolve() != (owner / ".git" / "worktrees").resolve():
                     raise UnsafeMetadata(f"{marker}: worktree link does not point into the repository's worktree registry")
+                pending.append((path, owner, True))
             elif all(os.path.lexists(path / name) for name in ("HEAD", "objects", "refs")):
                 raise UnsafeMetadata(f"{path}: bare repository in .worktrees")
             else:
-                pending.append(path)
+                pending.append((path, owner, inside_repository))
 
 
 def audit_hooks(directory):
@@ -163,7 +175,7 @@ def audit_hooks(directory):
                     raise UnsafeMetadata(f"{hook}: non-sample Git hook")
 
 
-def audit(root, expected_identity=None):
+def audit(root, expected_identity=None, scan_worktrees=True):
     metadata = root / ".git"
     regular(metadata, directory=True)
     info = metadata.stat()
@@ -214,15 +226,39 @@ def audit(root, expected_identity=None):
                 raise UnsafeMetadata(f"{path}: metadata symlink")
             elif path.is_dir():
                 pending.append(path)
-    audit_worktrees(root)
+    if scan_worktrees:
+        audit_worktrees(root)
     return identity
 
 
 def quarantine(root):
     """Hide unsafe metadata from host Git and prompts without deleting anything."""
-    target = root / f".git.sbx-quarantine-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{os.getpid()}"
-    os.rename(root / ".git", target)
-    return target
+    suffix = f".git.sbx-quarantine-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{os.getpid()}"
+    errors = []
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        metadata = directory / ".git"
+        if os.path.lexists(metadata):
+            target = directory / suffix
+            try:
+                os.rename(metadata, target)
+            except OSError as error:
+                errors.append(str(error))
+            else:
+                yield target
+        try:
+            # Protect the main repository first, even if descendant discovery fails.
+            children = [root / ".worktrees"] if directory == root else directory.iterdir()
+            for path in children:
+                if path.name == ".git" or path.name.startswith(".git.sbx-quarantine-"):
+                    continue
+                if not path.is_symlink() and path.is_dir():
+                    pending.append(path)
+        except OSError as error:
+            errors.append(str(error))
+    if errors:
+        raise UnsafeMetadata("Git metadata quarantine incomplete: " + "; ".join(errors))
 
 
 def discover():
@@ -243,7 +279,8 @@ def main():
         if any(os.environ.get(key) for key in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")):
             raise UnsafeMetadata("unset Git repository-routing environment variables before launching")
         if sys.argv[1] == "--quarantine" and len(sys.argv) == 3:
-            print(quarantine(Path(sys.argv[2])))
+            for target in quarantine(Path(sys.argv[2])):
+                print(target, flush=True)
             return 0
         if sys.argv[1] == "--identity":
             if len(sys.argv) != 3:

@@ -19,11 +19,15 @@ the audit fails. The execution helper restores interactive signal dispositions
 that Bash otherwise ignores for asynchronous jobs, and preserves standard input.
 
 When the postflight audit fails, the launcher runs `sbx stop <name>` and renames `.git` to
-`.git.sbx-quarantine-<UTC timestamp>-<pid>`, so a Git-aware prompt or IDE cannot execute planted
+`.git.sbx-quarantine-<UTC timestamp>-<pid>`, including the `.git` entries of repositories and linked
+worktrees under `.worktrees/`, so a Git-aware prompt or IDE cannot execute planted
 commands before the warning is read. Nothing is deleted or rewritten. After inspecting the
 quarantined directory with trusted tools, repair it and `mv` it back to `.git`. Launching refuses to
 continue while a quarantine directory exists next to the repository. A failed preflight never
 quarantines anything.
+Quarantine protects the main repository first and attempts descendants independently. A permission
+or traversal failure is reported without preventing other repositories from being quarantined;
+successfully moved paths are printed even if another entry fails.
 
 The check reads configuration using Git's own parser with an explicit file and includes disabled.
 It rejects local includes (including inactive `includeIf` branches), command-valued settings such
@@ -47,9 +51,13 @@ It never invokes repository hooks, filters or fsmonitor to inspect those files. 
 the file/key without printing its potentially secret command value or URL rewrite base.
 
 Directories under `.worktrees/` are audited because that is where agents create worktrees and where
-you `cd` to review them. Each must be a genuine linked worktree: `.git` is a plain file whose
-`gitdir:` points directly into this repository's `.git/worktrees/`. Nested repositories (a `.git`
-directory), bare repositories, symlinks and redirected `gitdir:` links are rejected.
+you `cd` to review them. Names and grouping depth do not matter. A linked worktree has a plain
+`.git` file whose `gitdir:` points directly into this repository's `.git/worktrees/`. Independent
+repositories with a `.git` directory are also supported: their configuration, hooks and administrative
+metadata receive the same audit as the main repository. Traversal continues through repository sources
+to find further nested repositories, without following source symlinks. Bare repositories,
+symlinks and redirected `gitdir:` links are rejected. Quarantined metadata anywhere in the audited
+`.worktrees/` grouping prevents launch until it has been inspected and restored or removed.
 
 This deliberately rejects local Git LFS filters, Husky hooks and other local command integrations.
 Trusted host-wide Git configuration is outside the local-config policy; moving commands there is
@@ -60,8 +68,8 @@ safe only when their executable files and configuration are also outside writabl
 **This is detection and launch hardening, not a complete sandbox isolation boundary.** Audits
 cannot prevent concurrent host Git or shell prompts from executing commands while a sandbox can
 write metadata. SIGKILL, a host crash, and background processes in a reused sandbox can bypass or
-outlive the postflight check. Nested independent repositories and trusted global includes or hooks
-pointing into the writable checkout, and repositories outside `.worktrees/`, are also outside this
+outlive the postflight check. Independent repositories outside the audited `.worktrees/` tree and
+trusted global includes or hooks pointing into the writable checkout are also outside this
 audit's protection. Transport settings such as `http.proxy` or `http.sslVerify=false` are not
 treated as commands, but a planted proxy can capture credentials that a host credential helper
 sends; review `http.*` entries when inspecting a failed audit. Closing the boundary

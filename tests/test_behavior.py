@@ -588,13 +588,20 @@ os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
         self.git("worktree", "add", "-q", ".worktrees/group/nested", "-b", "nested")
         self.assertEqual(self.launch().returncode, 0)
 
-    def test_nested_repositories_and_redirected_worktrees_are_rejected(self):
+    def test_nested_repository_is_accepted_and_audited(self):
+        nested = self.repo / ".worktrees/group/arbitrary repo"
+        subprocess.run(["git", "init", "-q", "--template=", str(nested)], check=True)
+        result = self.launch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (nested / ".git/config").write_text("[core]\nfsmonitor = attack\n")
+        self.reset_log()
+        result = self.launch()
+        self.assert_no_launch(result)
+        self.assertIn("core.fsmonitor", result.stderr)
+
+    def test_redirected_worktrees_bare_repositories_and_symlinks_are_rejected(self):
         worktrees = self.repo / ".worktrees"
         worktrees.mkdir()
-        evil = worktrees / "evil"
-        subprocess.run(["git", "init", "-q", str(evil)], check=True)
-        self.assert_no_launch(self.launch())
-        shutil.rmtree(evil)
         crafted = self.repo / "crafted"
         crafted.mkdir()
         topic = worktrees / "topic"
@@ -611,6 +618,20 @@ os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
         (worktrees / "link").symlink_to(self.base)
         self.reset_log()
         self.assert_no_launch(self.launch())
+
+    def test_nested_repository_postflight_failure_quarantines_its_metadata(self):
+        nested = self.repo / ".worktrees/group/arbitrary repo"
+        subprocess.run(["git", "init", "-q", "--template=", str(nested)], check=True)
+        hook = nested / ".git/hooks/pre-commit"
+        result = self.launch(env={"SBX_TEST_MUTATION_STAGE": "run",
+                                  "SBX_TEST_MUTATIONS": json.dumps([[str(hook), "attack"]])})
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.repo / ".git").exists())
+        self.assertFalse((nested / ".git").exists())
+        (saved,) = nested.glob(".git.sbx-quarantine-*")
+        self.assertEqual((saved / "hooks/pre-commit").read_text(), "attack")
+        self.assertIn(str(saved), result.stderr)
+        self.assertEqual([call["argv"][0] for call in self.calls()].count("stop"), 1)
 
     def test_failed_post_audit_stops_sandbox_and_quarantines_git_metadata(self):
         target = self.repo / ".git/hooks/pre-commit"

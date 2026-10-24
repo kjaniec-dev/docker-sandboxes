@@ -219,10 +219,89 @@ class GitAuditTests(unittest.TestCase):
         result = self.audit()
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_worktrees_directory_rejects_nested_clone(self):
+    def test_worktrees_directory_accepts_nested_repositories_at_any_depth(self):
+        for relative in ("spike repo", "group/arbitrary/deep-repo",
+                         "spike repo/.worktrees/another repo", "spike repo/group/child"):
+            nested = self.repo / ".worktrees" / relative
+            subprocess.run(["git", "init", "--quiet", "--template=", str(nested)],
+                           env=self.env, check=True, capture_output=True)
+        result = self.audit()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_nested_repository_cannot_hide_descendant_metadata(self):
+        outer = self.repo / ".worktrees/independent"
+        child = outer / "group/child"
+        for nested in (outer, child):
+            subprocess.run(["git", "init", "--quiet", "--template=", str(nested)],
+                           env=self.env, check=True, capture_output=True)
+        (outer / "source-link").symlink_to(self.base / "not-present")
+        config = child / ".git/config"
+        original = config.read_bytes()
+        config.write_bytes(original + b"\n[core]\nfsmonitor = attack\n")
+        self.assert_rejected(self.audit(), "core.fsmonitor")
+        config.write_bytes(original)
+        result = self.audit()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.audit("--quarantine", str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((child / ".git").exists())
+        (saved,) = child.glob(".git.sbx-quarantine-*")
+        self.assertEqual((saved / "config").read_bytes(), original)
+
+    def test_quarantine_failure_does_not_leave_main_or_sibling_metadata_active(self):
+        blocked = self.repo / ".worktrees/blocked"
+        sibling = self.repo / ".worktrees/sibling"
+        for nested in (blocked, sibling):
+            subprocess.run(["git", "init", "--quiet", "--template=", str(nested)],
+                           env=self.env, check=True, capture_output=True)
+        self.addCleanup(blocked.chmod, 0o700)
+        blocked.chmod(0o500)
+        result = self.audit("--quarantine", str(self.repo))
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertFalse((self.repo / ".git").exists())
+        self.assertFalse((sibling / ".git").exists())
+        self.assertTrue((blocked / ".git").exists())
+        self.assertIn("blocked/.git", result.stderr)
+
+    def test_worktrees_directory_audits_nested_repository_config_and_hooks(self):
+        nested = self.repo / ".worktrees/group/clone"
+        subprocess.run(["git", "init", "--quiet", "--template=", str(nested)],
+                       env=self.env, check=True, capture_output=True)
+        config = nested / ".git/config"
+        original = config.read_bytes()
+        marker = self.base / "must-not-run"
+        config.write_bytes(original + f"\n[core]\nfsmonitor = touch {marker}\n".encode())
+        self.assert_rejected(self.audit(), "core.fsmonitor")
+        self.assertFalse(marker.exists())
+        config.write_bytes(original)
+        hook = nested / ".git/hooks/pre-commit"
+        hook.parent.mkdir(exist_ok=True)
+        hook.write_text(f"#!/bin/sh\ntouch '{marker}'\n")
+        hook.chmod(0o755)
+        self.assert_rejected(self.audit(), "non-sample Git hook")
+        self.assertFalse(marker.exists())
+
+    def test_worktrees_directory_rejects_incomplete_nested_repository(self):
         nested = self.repo / ".worktrees/group/clone/.git"
         nested.mkdir(parents=True)
-        self.assert_rejected(self.audit(), "expected a real file")
+        self.assert_rejected(self.audit(), "missing Git configuration")
+
+    def test_quarantine_preserves_nested_repository_metadata(self):
+        nested = self.repo / ".worktrees/group/arbitrary-repo"
+        subprocess.run(["git", "init", "--quiet", "--template=", str(nested)],
+                       env=self.env, check=True, capture_output=True)
+        config = nested / ".git/config"
+        original = config.read_bytes()
+        result = self.audit("--quarantine", str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.repo / ".git").exists())
+        self.assertFalse((nested / ".git").exists())
+        (saved,) = nested.glob(".git.sbx-quarantine-*")
+        self.assertEqual((saved / "config").read_bytes(), original)
+        self.assertIn(str(saved), result.stdout)
+        (main_saved,) = self.repo.glob(".git.sbx-quarantine-*")
+        main_saved.rename(self.repo / ".git")
+        self.assert_rejected(self.audit(), "quarantined Git metadata present")
 
     def test_worktrees_directory_rejects_bare_repository(self):
         nested = self.repo / ".worktrees/group/bare"

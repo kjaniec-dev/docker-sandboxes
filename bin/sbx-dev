@@ -90,10 +90,11 @@ audit_on_exit() {
   python3 "$ROOT/bin/audit-git.py" "$repo_root" "$repo_metadata_identity" || audit_status=$?
   if [[ "$audit_status" != 0 && "$session_started" == true ]]; then
     # A Git-aware prompt would run planted commands before the warning is read:
-    # stop the sandbox and move .git aside (nothing is deleted or rewritten).
+    # stop the sandbox and move audited repositories' .git aside.
     [[ -z "$name" ]] || sbx stop "$name" >/dev/null 2>&1 || true
-    if quarantined="$(python3 "$ROOT/bin/audit-git.py" --quarantine "$repo_root")"; then
-      echo "sbx-dev: Git metadata moved to $quarantined; inspect it with trusted tools, then mv it back to .git" >&2
+    quarantined="$(python3 "$ROOT/bin/audit-git.py" --quarantine "$repo_root")" || true
+    if [[ -n "$quarantined" ]]; then
+      printf 'sbx-dev: Git metadata moved to:\n%s\nInspect it with trusted tools, then mv each entry back to .git\n' "$quarantined" >&2
     fi
   fi
   [[ "$status" != 0 ]] || status=$audit_status

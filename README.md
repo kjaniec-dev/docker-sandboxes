@@ -105,6 +105,8 @@ Sandbox names combine profile, agent, repository basename and a digest of the ab
 path. Repeated launches reuse the same sandbox. The launcher rejects tracked or symlinked
 `.worktrees/`, unignored worktrees, and linked checkouts whose Git metadata falls outside the
 single mounted project. Launch from the main checkout and let the agent create worktrees underneath it.
+Names and grouping depth inside `.worktrees/` are unrestricted. Independent repositories there are
+supported too, with the same Git metadata checks as the main checkout.
 
 Select a profile using `SBX_PROFILE` or a `profile` file in
 `${XDG_CONFIG_HOME:-$HOME/.config}/docker-sandboxes`. The default is `personal`.
