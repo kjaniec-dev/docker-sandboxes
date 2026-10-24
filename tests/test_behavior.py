@@ -98,7 +98,8 @@ elif args[:1] != ["run"]:
         self.environ = dict(os.environ)
         for key in ("SBX_PROFILE", "XDG_CONFIG_HOME", "SBX_KIT_BUILDER", "JUNIE_API_KEY", "ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION"):
             self.environ.pop(key, None)
-        self.environ.update(HOME=str(self.home), PATH=str(self.tools) + os.pathsep + os.environ["PATH"], SBX_TEST_LOG=str(self.log))
+        self.environ.update(HOME=str(self.home), PATH=str(self.tools) + os.pathsep + os.environ["PATH"],
+                            SBX_TEST_LOG=str(self.log), SBX_GIT_AUDIT="strict")
 
     def git(self, *args, cwd=None):
         return subprocess.run(["git", "-C", str(cwd or self.repo), *args], check=True, text=True, capture_output=True)
@@ -396,6 +397,35 @@ elif args[:1] != ["run"]:
         self.git("config", "user.name", "Test Developer")
         self.git("config", "alias.st", "status --short")
         self.assertEqual(self.launch().returncode, 0)
+
+    def test_default_policy_accepts_repository_integrations_without_running_them(self):
+        self.environ.pop("SBX_GIT_AUDIT")
+        marker = self.base / "host-command-ran"
+        self.git("config", "core.hooksPath", str(self.base / "old-checkout/.git/hooks"))
+        self.git("config", "core.fsmonitor", f"touch '{marker}'")
+        self.git("config", "filter.lfs.process", "git-lfs filter-process")
+        hooks = self.repo / ".git/hooks"
+        hooks.mkdir(exist_ok=True)
+        (hooks / "pre-commit").write_text(f"#!/bin/sh\ntouch '{marker}'\n")
+        (hooks / "pre-commit").chmod(0o755)
+        result = self.launch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.repo / ".git").is_dir())
+        self.assertFalse(marker.exists())
+
+    def test_compatible_postflight_accepts_repository_integration_changes(self):
+        hook = self.repo / ".git/hooks/pre-commit"
+        result = self.launch(env={"SBX_GIT_AUDIT": "compatible",
+                                  "SBX_TEST_MUTATION_STAGE": "run",
+                                  "SBX_TEST_MUTATIONS": json.dumps([[str(hook), "new project hook"]])})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(hook.exists())
+        self.assertFalse(any(call["argv"][:1] == ["stop"] for call in self.calls()))
+
+    def test_invalid_git_audit_policy_fails_before_launch(self):
+        result = self.launch(env={"SBX_GIT_AUDIT": "typo"})
+        self.assert_no_launch(result)
+        self.assertIn("SBX_GIT_AUDIT", result.stderr)
 
     def test_non_shell_alias_cannot_inject_command_configuration(self):
         for alias in ('-c core.fsmonitor=attack status', '"-c" core.fsmonitor=attack status',

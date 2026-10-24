@@ -107,6 +107,10 @@ path. Repeated launches reuse the same sandbox. The launcher rejects tracked or 
 single mounted project. Launch from the main checkout and let the agent create worktrees underneath it.
 Names and grouping depth inside `.worktrees/` are unrestricted. Independent repositories there are
 supported too, with the same Git metadata checks as the main checkout.
+All launchers default to `SBX_GIT_AUDIT=compatible`, which trusts repository hooks and Git integrations
+such as Husky and Git LFS. To reject command-valued Git settings and hooks, opt in with
+`SBX_GIT_AUDIT=strict codex-sbx` (or any other launcher). See [Git metadata policy](docs/git-metadata.md)
+for the scope and limits of each mode.
 
 Select a profile using `SBX_PROFILE` or a `profile` file in
 `${XDG_CONFIG_HOME:-$HOME/.config}/docker-sandboxes`. The default is `personal`.

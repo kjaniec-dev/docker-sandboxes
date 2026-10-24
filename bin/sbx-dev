@@ -66,6 +66,13 @@ case "$profile:$agent" in
     ;;
 esac
 
+git_audit_policy=--allow-integrations
+case "${SBX_GIT_AUDIT:-compatible}" in
+  compatible) ;;
+  strict) git_audit_policy=--strict ;;
+  *) echo "sbx-dev: SBX_GIT_AUDIT must be compatible or strict" >&2; exit 2 ;;
+esac
+
 command -v sbx >/dev/null 2>&1 || {
   echo "sbx-dev: 'sbx' not found; install Docker Sandboxes 0.49.2+" >&2
   exit 1
@@ -74,7 +81,7 @@ command -v sbx >/dev/null 2>&1 || {
 sbx version --json | python3 "$ROOT/bin/check-sbx-version.py"
 export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
 
-repo_metadata="$(python3 "$ROOT/bin/audit-git.py" --discover-identity)"
+repo_metadata="$(python3 "$ROOT/bin/audit-git.py" "$git_audit_policy" --discover-identity)"
 {
   IFS= read -r -d '' repo_root
   IFS= read -r -d '' repo_metadata_identity
@@ -87,12 +94,12 @@ session_started=false
 audit_on_exit() {
   local status=$? audit_status=0 quarantined
   trap - EXIT
-  python3 "$ROOT/bin/audit-git.py" "$repo_root" "$repo_metadata_identity" || audit_status=$?
+  python3 "$ROOT/bin/audit-git.py" "$git_audit_policy" "$repo_root" "$repo_metadata_identity" || audit_status=$?
   if [[ "$audit_status" != 0 && "$session_started" == true ]]; then
     # A Git-aware prompt would run planted commands before the warning is read:
     # stop the sandbox and move audited repositories' .git aside.
     [[ -z "$name" ]] || sbx stop "$name" >/dev/null 2>&1 || true
-    quarantined="$(python3 "$ROOT/bin/audit-git.py" --quarantine "$repo_root")" || true
+    quarantined="$(python3 "$ROOT/bin/audit-git.py" "$git_audit_policy" --quarantine "$repo_root")" || true
     if [[ -n "$quarantined" ]]; then
       printf 'sbx-dev: Git metadata moved to:\n%s\nInspect it with trusted tools, then mv each entry back to .git\n' "$quarantined" >&2
     fi
