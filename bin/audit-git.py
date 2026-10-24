@@ -78,7 +78,7 @@ def command_key(key, value):
     )
 
 
-def audit_config(path, root):
+def audit_config(path, root, allow_integrations=False):
     regular(path)
     # --file ignores other config scopes; --no-includes makes dormant includeIf
     # entries visible without opening untrusted paths. Reject includes below.
@@ -96,7 +96,9 @@ def audit_config(path, root):
         key, _, value = entry.partition(b"\n")
         key = os.fsdecode(key)
         value = os.fsdecode(value)
-        if command_key(key, value):
+        if command_key(key, value) and (
+            not allow_integrations or key.lower().startswith(("include.", "includeif."))
+        ):
             # Never print values: they can contain credentials or terminal escapes.
             # Rewrite bases live in keys and can contain commands/credentials too.
             if key.lower().startswith("url."):
@@ -109,7 +111,7 @@ def audit_config(path, root):
                 raise UnsafeMetadata(f"{path}: core.worktree escapes the workspace")
 
 
-def audit_worktrees(root):
+def audit_worktrees(root, allow_integrations=False):
     """Audit linked worktrees and independent repositories under .worktrees/.
 
     Host Git reads the config of any repository the user enters, so a nested
@@ -142,7 +144,7 @@ def audit_worktrees(root):
             marker = path / ".git"
             if os.path.lexists(marker):
                 if stat.S_ISDIR(marker.lstat().st_mode):
-                    audit(path, scan_worktrees=False)
+                    audit(path, scan_worktrees=False, allow_integrations=allow_integrations)
                     pending.append((path, path, True))
                     continue
                 regular(marker)
@@ -179,7 +181,7 @@ def audit_hooks(directory):
                     raise UnsafeMetadata(f"{hook}: non-sample Git hook")
 
 
-def audit(root, expected_identity=None, scan_worktrees=True):
+def audit(root, expected_identity=None, scan_worktrees=True, allow_integrations=False):
     metadata = root / ".git"
     regular(metadata, directory=True)
     info = metadata.stat()
@@ -204,9 +206,10 @@ def audit(root, expected_identity=None, scan_worktrees=True):
             if metadata_root and path.name in {"objects", "refs", "logs", "lfs"}:
                 continue
             if path.name in {"config", "config.worktree"}:
-                audit_config(path, root)
+                audit_config(path, root, allow_integrations=allow_integrations)
             elif path.name == "hooks":
-                audit_hooks(path)
+                if not allow_integrations:
+                    audit_hooks(path)
             elif path.name in {"commondir", "gitdir"}:
                 regular(path)
                 if path.name == "gitdir" and path.parent.parent.name == "worktrees":
@@ -231,7 +234,7 @@ def audit(root, expected_identity=None, scan_worktrees=True):
             elif path.is_dir():
                 pending.append(path)
     if scan_worktrees:
-        audit_worktrees(root)
+        audit_worktrees(root, allow_integrations=allow_integrations)
     return identity
 
 
@@ -280,27 +283,32 @@ def discover():
 
 def main():
     try:
-        if len(sys.argv) not in {2, 3}:
-            raise UnsafeMetadata("usage: audit-git.py <--discover|--discover-identity|--identity root|--quarantine root|root [identity]>")
+        args = sys.argv[1:]
+        allow_integrations = args[:1] == ["--allow-integrations"]
+        if args[:1] in (["--allow-integrations"], ["--strict"]):
+            args = args[1:]
+        if len(args) not in {1, 2}:
+            raise UnsafeMetadata("usage: audit-git.py [--allow-integrations|--strict] <--discover|--discover-identity|--identity root|--quarantine root|root [identity]>")
         if any(os.environ.get(key) for key in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")):
             raise UnsafeMetadata("unset Git repository-routing environment variables before launching")
-        if sys.argv[1] == "--quarantine" and len(sys.argv) == 3:
-            for target in quarantine(Path(sys.argv[2])):
+        if args[0] == "--quarantine" and len(args) == 2:
+            for target in quarantine(Path(args[1])):
                 print(target, flush=True)
             return 0
-        if sys.argv[1] == "--identity":
-            if len(sys.argv) != 3:
+        if args[0] == "--identity":
+            if len(args) != 2:
                 raise UnsafeMetadata("--identity requires a repository root")
-            print(audit(Path(sys.argv[2])))
+            print(audit(Path(args[1]), allow_integrations=allow_integrations))
             return 0
-        discovering = sys.argv[1] in {"--discover", "--discover-identity"}
-        if discovering and len(sys.argv) != 2:
-            raise UnsafeMetadata(f"{sys.argv[1]} does not accept arguments")
-        root = discover() if discovering else Path(sys.argv[1])
-        identity = audit(root, sys.argv[2] if len(sys.argv) == 3 else None)
-        if sys.argv[1] == "--discover-identity":
+        discovering = args[0] in {"--discover", "--discover-identity"}
+        if discovering and len(args) != 1:
+            raise UnsafeMetadata(f"{args[0]} does not accept arguments")
+        root = discover() if discovering else Path(args[0])
+        identity = audit(root, args[1] if len(args) == 2 else None,
+                         allow_integrations=allow_integrations)
+        if args[0] == "--discover-identity":
             print(json.dumps([str(root), identity]))
-        elif sys.argv[1] == "--discover":
+        elif args[0] == "--discover":
             print(root)
     except (UnsafeMetadata, OSError, ValueError) as error:
         print(f"sbx-dev: Git metadata audit failed: {error}", file=sys.stderr)

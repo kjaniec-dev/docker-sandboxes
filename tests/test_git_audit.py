@@ -76,6 +76,47 @@ class GitAuditTests(unittest.TestCase):
         result = self.audit()
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_compatible_mode_accepts_repository_integrations_without_execution(self):
+        marker = self.base / "must-not-run"
+        self.setting("core.hooksPath", str(self.base / "old-checkout/.git/hooks"))
+        self.setting("core.fsmonitor", f"touch '{marker}'")
+        self.setting("filter.lfs.process", "git-lfs filter-process")
+        hooks = self.repo / ".git/hooks"
+        hooks.mkdir()
+        hook = hooks / "pre-commit"
+        hook.write_text(f"#!/bin/sh\ntouch '{marker}'\n")
+        hook.chmod(0o755)
+        result = self.audit("--allow-integrations", str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(marker.exists())
+        self.assert_rejected(self.audit(), "prohibited setting")
+        hook.unlink()
+        hook.symlink_to(self.repo / "project-hook")
+        result = self.audit("--allow-integrations", str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_compatible_mode_preserves_routing_and_include_checks(self):
+        for key, value, diagnostic in (
+            ("core.worktree", str(self.base), "core.worktree escapes"),
+            ("include.path", str(self.base / "other-config"), "include.path"),
+        ):
+            with self.subTest(key=key):
+                self.config.write_bytes(self.original)
+                self.setting(key, value)
+                self.assert_rejected(self.audit("--allow-integrations", str(self.repo)), diagnostic)
+
+    def test_compatible_mode_applies_to_nested_repositories(self):
+        nested = self.repo / ".worktrees/group/clone"
+        subprocess.run(["git", "init", "--quiet", "--template=", str(nested)],
+                       env=self.env, check=True, capture_output=True)
+        config = nested / ".git/config"
+        original = config.read_bytes()
+        config.write_bytes(original + b"\n[core]\nhooksPath = .husky/_\n")
+        result = self.audit("--allow-integrations", str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config.write_bytes(original + f"\n[core]\nworktree = {self.base}\n".encode())
+        self.assert_rejected(self.audit("--allow-integrations", str(self.repo)), "core.worktree escapes")
+
     def test_additional_command_settings_are_rejected(self):
         for key, value in (
             ("submodule.lib.update", "!touch /must-not-run"),

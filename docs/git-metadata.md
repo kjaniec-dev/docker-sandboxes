@@ -7,6 +7,18 @@ to the terminal. `safe.directory` does not protect an owned checkout from this a
 
 ## Launcher checks
 
+All `*-sbx` launchers default to `SBX_GIT_AUDIT=compatible`. This trusts repository Git
+integrations: `core.hooksPath`, hook scripts (including hook symlinks), Git LFS filters, fsmonitor,
+editors and other command-valued settings do not block startup or cause postflight quarantine.
+The audit reads their metadata without executing them. Normal host Git can still execute those
+integrations, including commands an agent adds or changes; compatible mode does not protect
+against that attack. Use it for repositories whose Git integrations you trust.
+
+Set `SBX_GIT_AUDIT=strict` to opt into the command restrictions described below, for example
+`SBX_GIT_AUDIT=strict codex-sbx`. Both modes retain configuration parsing, local-include rejection,
+administrative routing checks, metadata identity checks, and worktree structure checks.
+Local includes remain blocked because they can override audited routing settings.
+
 `bin/sbx-dev` calls `bin/audit-git.py` before any repository Git operations and again on shell exit,
 including failed provisioning, failed agent sessions, INT and TERM. The shell waits for SBX
 instead of replacing itself with `exec`. An unsafe preflight prevents launch; an unsafe postflight
@@ -34,17 +46,17 @@ entries hidden inside. Do not run Git or use a Git-aware prompt inside a quarant
 manually inspecting its configuration and hooks with trusted tools.
 
 The check reads configuration using Git's own parser with an explicit file and includes disabled.
-It rejects local includes (including inactive `includeIf` branches), command-valued settings such
+Both modes reject local includes (including inactive `includeIf` branches). Strict mode also rejects command-valued settings such
 as fsmonitor, hooks paths, SSH commands, pagers, editors, filters, textconv, diff commands, merge
 drivers, shell aliases, aliases injecting global Git options, configured hooks, trailers,
 credential helpers, signing programs, `protocol.*.allow`, remote-helper URLs (`transport::address`,
 `remote.*.vcs`, including `url.*.insteadOf` spellings), `submodule.*.update = !…` and
 `sendemail`/`browser`/`man` commands, absolute SMTP executable paths, manual/browser executable
 paths and template directories. Ordinary remote URLs and URL rewrites remain usable.
-It inspects main, worktree and submodule metadata, rejects non-sample hook files regardless of
-executable mode, rejects metadata symlinks, checks administrative routing paths and detects
-replacement of the main `.git` directory. Real hook subdirectories can store disabled hooks;
-their contents are still checked for symlinks.
+It inspects main, worktree and submodule metadata, rejects metadata symlinks outside the compatible
+mode's hooks exception, checks administrative routing paths and detects replacement of the main
+`.git` directory. Strict mode rejects non-sample hook files regardless of executable mode.
+Real hook subdirectories can store disabled hooks; strict mode still checks their contents for symlinks.
 Linked worktrees outside the main checkout remain supported when launching from the main
 checkout. Their administrative `gitdir` files are backpointers and are never followed to external
 files. Local `config.worktree` files are still audited; forward routing escapes are rejected,
@@ -63,7 +75,7 @@ to find further nested repositories, without following source symlinks. Bare rep
 symlinks and redirected `gitdir:` links are rejected. Quarantined metadata anywhere in the audited
 `.worktrees/` grouping prevents launch until it has been inspected and restored or removed.
 
-This deliberately rejects local Git LFS filters, Husky hooks and other local command integrations.
+Strict mode deliberately rejects local Git LFS filters, Husky hooks and other local command integrations.
 Trusted host-wide Git configuration is outside the local-config policy; moving commands there is
 safe only when their executable files and configuration are also outside writable workspaces.
 
@@ -78,7 +90,7 @@ audit's protection. Transport settings such as `http.proxy` or `http.sslVerify=f
 treated as commands, but a planted proxy can capture credentials that a host credential helper
 sends; review `http.*` entries when inspecting a failed audit. Closing the boundary
 requires separating host Git metadata from sandbox-writable metadata.
-The setting policy covers known command-valued Git options; new Git command integrations require
+The strict setting policy covers known command-valued Git options; new Git command integrations require
 review and corresponding regression coverage.
 
 On postflight failure, the launcher stops the sandbox and quarantines metadata as described above;
@@ -87,6 +99,8 @@ using a trusted editor outside the checkout before running host Git again. A pre
 does not make returning to a Git-aware prompt safe. Review local config and non-sample hooks,
 repair them, restore quarantined metadata to `.git` when applicable, then rerun
 `python3 /trusted/path/to/bin/audit-git.py /absolute/project/path`.
+The standalone helper defaults to strict checks. Add `--allow-integrations` before the project path
+to use the launcher's default compatible policy; `--strict` selects strict checks explicitly.
 
 Keep the launcher checkout, its audit helper, and machine-local SBX overlays outside any workspace
 mounted into an untrusted agent: a guard that the agent can edit cannot establish host trust.
