@@ -23,6 +23,10 @@ def regular(path, directory=False):
 
 # "transport::address" URLs make Git run git-remote-<transport>; ext:: runs a shell command.
 REMOTE_HELPER = re.compile(r"^[a-z0-9+.-]+::", re.IGNORECASE)
+QUARANTINE_RECOVERY = (
+    "quarantined Git metadata present; do not run Git or use a Git-aware prompt inside it "
+    "before manually inspecting config and hooks with trusted tools; then restore or remove it"
+)
 
 
 def command_key(key, value):
@@ -122,7 +126,7 @@ def audit_worktrees(root):
         for path in directory.iterdir():
             mode = path.lstat().st_mode
             if path.name.startswith(".git.sbx-quarantine-"):
-                raise UnsafeMetadata(f"{path}: quarantined Git metadata present; inspect it and restore or remove it")
+                raise UnsafeMetadata(f"{path}: {QUARANTINE_RECOVERY}")
             if stat.S_ISLNK(mode):
                 if inside_repository:
                     # Source symlinks are ordinary checkout content; never follow them.
@@ -235,6 +239,7 @@ def quarantine(root):
     """Hide unsafe metadata from host Git and prompts without deleting anything."""
     suffix = f".git.sbx-quarantine-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{os.getpid()}"
     errors = []
+    moved = set()
     pending = [root]
     while pending:
         directory = pending.pop()
@@ -246,12 +251,13 @@ def quarantine(root):
             except OSError as error:
                 errors.append(str(error))
             else:
+                moved.add(target)
                 yield target
         try:
             # Protect the main repository first, even if descendant discovery fails.
             children = [root / ".worktrees"] if directory == root else directory.iterdir()
             for path in children:
-                if path.name == ".git" or path.name.startswith(".git.sbx-quarantine-"):
+                if path.name == ".git" or path in moved:
                     continue
                 if not path.is_symlink() and path.is_dir():
                     pending.append(path)
@@ -264,7 +270,7 @@ def quarantine(root):
 def discover():
     for path in (Path.cwd(), *Path.cwd().parents):
         if any(path.glob(".git.sbx-quarantine-*")):
-            raise UnsafeMetadata(f"{path}: quarantined Git metadata present; inspect it and restore or remove it")
+            raise UnsafeMetadata(f"{path}: {QUARANTINE_RECOVERY}")
         if (path / ".git").exists() or (path / ".git").is_symlink():
             if not (path / ".git").is_dir():
                 raise UnsafeMetadata("linked worktree: launch from the main Git checkout")

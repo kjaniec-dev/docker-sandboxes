@@ -303,6 +303,37 @@ class GitAuditTests(unittest.TestCase):
         main_saved.rename(self.repo / ".git")
         self.assert_rejected(self.audit(), "quarantined Git metadata present")
 
+    def test_quarantine_descends_into_preexisting_quarantine_names(self):
+        nested = self.repo / ".worktrees/.git.sbx-quarantine-fake/x"
+        subprocess.run(["git", "init", "--quiet", "--template=", str(nested)],
+                       env=self.env, check=True, capture_output=True)
+        config = nested / ".git/config"
+        marker = self.base / "must-not-run"
+        original = config.read_bytes() + f"\n[core]\nfsmonitor = touch {marker}\n".encode()
+        config.write_bytes(original)
+        audit_result = self.audit()
+        self.assert_rejected(audit_result, "quarantined Git metadata present")
+        result = self.audit("--quarantine", str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((nested / ".git").exists())
+        (saved,) = nested.glob(".git.sbx-quarantine-*")
+        self.assertEqual((saved / "config").read_bytes(), original)
+        self.assertFalse(marker.exists())
+        self.assertIn("do not run Git", audit_result.stderr)
+
+    def test_quarantine_does_not_traverse_metadata_it_just_moved(self):
+        nested = self.repo / ".worktrees/nested"
+        subprocess.run(["git", "init", "--quiet", "--template=", str(nested)],
+                       env=self.env, check=True, capture_output=True)
+        stored = nested / ".git/objects/fixture/.git"
+        stored.mkdir(parents=True)
+        (stored / "config").write_text("stored object fixture\n")
+        result = self.audit("--quarantine", str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (saved,) = nested.glob(".git.sbx-quarantine-*")
+        self.assertEqual((saved / "objects/fixture/.git/config").read_text(),
+                         "stored object fixture\n")
+
     def test_worktrees_directory_rejects_bare_repository(self):
         nested = self.repo / ".worktrees/group/bare"
         nested.mkdir(parents=True)
