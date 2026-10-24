@@ -28,6 +28,10 @@ quarantines anything.
 Quarantine protects the main repository first and attempts descendants independently. A permission
 or traversal failure is reported without preventing other repositories from being quarantined;
 successfully moved paths are printed even if another entry fails.
+Only metadata paths actually moved during the current quarantine pass are excluded from traversal.
+Pre-existing directories named `.git.sbx-quarantine-*` are traversed to quarantine any active `.git`
+entries hidden inside. Do not run Git or use a Git-aware prompt inside a quarantine directory before
+manually inspecting its configuration and hooks with trusted tools.
 
 The check reads configuration using Git's own parser with an explicit file and includes disabled.
 It rejects local includes (including inactive `includeIf` branches), command-valued settings such
