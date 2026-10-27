@@ -37,6 +37,9 @@ path = Path(os.environ["SBX_TEST_STATE"])
 state = json.loads(path.read_text())
 name = "smoke-personal-codex-0123456789"
 scenario = os.environ.get("SBX_TEST_SCENARIO", "normal")
+if args == ["version", "--json"]:
+    print(os.environ.get("SBX_TEST_VERSION") or json.dumps({"client": {"version": "v0.50.0"}}))
+    sys.exit(0)
 if args == ["ls", "--json"]:
     if state.get("removal_succeeded") and scenario == "post-remove-inventory-error":
         print("[]")
@@ -93,13 +96,17 @@ elif args[:3] == ["exec", "-i", name]:
         sys.exit(125)
     if scenario == "check-fails":
         sys.exit(1)
+elif args[:3] == ["exec", name, "codex"]:
+    if scenario == "model-unavailable":
+        sys.exit(125)
+    sys.exit(1)
 else:
     sys.exit("unexpected SBX command: " + repr(args))
 path.write_text(json.dumps(state))
 ''')
         stub.chmod(0o755)
         self.environ = dict(os.environ)
-        for key in ("XDG_CONFIG_HOME", "SBX_SMOKE_KEEP_ON_FAILURE", "SBX_SMOKE_MODEL", "SBX_TEST_SCENARIO", "SBX_TEST_INVENTORY"):
+        for key in ("XDG_CONFIG_HOME", "SBX_SMOKE_KEEP_ON_FAILURE", "SBX_SMOKE_MODEL", "SBX_TEST_SCENARIO", "SBX_TEST_INVENTORY", "SBX_TEST_VERSION"):
             self.environ.pop(key, None)
         self.environ.update(
             HOME=str(self.base / "home"),
@@ -118,8 +125,11 @@ path.write_text(json.dumps(state))
             env=self.environ | env, text=True, capture_output=True, timeout=30,
         )
 
-    def calls(self):
+    def raw_calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+    def calls(self):
+        return [call for call in self.raw_calls() if call != ["version", "--json"]]
 
     def test_fresh_restart_recreation_and_final_cleanup_use_048_contract(self):
         result = self.run_smoke()
@@ -207,6 +217,29 @@ path.write_text(json.dumps(state))
                     ["ls", "--json"], ["env", "run"], ["exec", "-i"], ["env", "rm"],
                 ])
                 self.assertFalse(Path(json.loads(self.state.read_text())["workspace"]).exists())
+
+    def test_model_request_start_failure_is_distinguished_from_a_failed_request(self):
+        for scenario, message in (("model-unavailable", f"smoke: fresh model request could not start in {NAME} (sbx exit 125"),
+                                  ("model-fails", "smoke: fresh model request failed")):
+            with self.subTest(scenario=scenario):
+                self.log.unlink(missing_ok=True)
+                self.state.write_text(json.dumps({"exists": False, "running": False, "generation": 0}))
+                result = self.run_smoke(SBX_TEST_SCENARIO=scenario, SBX_SMOKE_MODEL="1")
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(message, result.stderr)
+                self.assertEqual([call[:2] for call in self.calls()], [
+                    ["ls", "--json"], ["env", "run"], ["exec", "-i"], ["exec", NAME], ["env", "rm"],
+                ])
+                self.assertFalse(Path(json.loads(self.state.read_text())["workspace"]).exists())
+
+    def test_versions_below_the_floor_never_touch_sandboxes(self):
+        for version in ("v0.49.2", "v0.50.0-rc.1"):
+            with self.subTest(version=version):
+                self.log.unlink(missing_ok=True)
+                result = self.run_smoke(SBX_TEST_VERSION=json.dumps({"client": {"version": version}}))
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("Docker Sandboxes 0.50.0+ is required", result.stderr)
+                self.assertEqual(self.raw_calls(), [["version", "--json"]])
 
     def test_occupied_name_never_removes_existing_sandbox(self):
         result = self.run_smoke(SBX_TEST_SCENARIO="occupied")
