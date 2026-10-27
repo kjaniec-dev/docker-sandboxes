@@ -282,9 +282,17 @@ elif args[:1] != ["run"]:
         self.assertIn(str(ROOT / "env/personal/codex.sbxenv.yaml"), self.operation(["env", "run"])["argv"])
 
     def test_client_claude_requires_both_vertex_arguments(self):
-        self.assert_no_launch(self.launch("claude", env={"SBX_PROFILE": "client"}))
-        self.reset_log()
-        self.assert_no_launch(self.launch("claude", env={"SBX_PROFILE": "client", "ANTHROPIC_VERTEX_PROJECT_ID": "project"}))
+        # Exit status 2 with a diagnostic: a failed ${VAR:?} expansion would report 0 to the EXIT trap on Bash 3.2.
+        for env, missing in (({}, "ANTHROPIC_VERTEX_PROJECT_ID"),
+                             ({"ANTHROPIC_VERTEX_PROJECT_ID": "project"}, "CLOUD_ML_REGION"),
+                             ({"CLOUD_ML_REGION": "eu"}, "ANTHROPIC_VERTEX_PROJECT_ID"),
+                             ({"ANTHROPIC_VERTEX_PROJECT_ID": "", "CLOUD_ML_REGION": "eu"}, "ANTHROPIC_VERTEX_PROJECT_ID")):
+            with self.subTest(env=env):
+                self.reset_log()
+                result = self.launch("claude", env={"SBX_PROFILE": "client", **env})
+                self.assert_no_launch(result)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn(f"sbx-dev: Set {missing}", result.stderr)
 
     def test_client_claude_executes_with_current_environment_and_preserves_argv(self):
         config = self.home / ".config/docker-sandboxes"
