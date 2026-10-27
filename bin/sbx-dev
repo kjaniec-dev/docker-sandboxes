@@ -163,8 +163,9 @@ local_overlay="$config_root/$profile.sbxenv.yaml"
 
 args=(--env-arg "workspace=$repo_root")
 if [[ "$profile:$agent" == client:claude ]]; then
-  : "${ANTHROPIC_VERTEX_PROJECT_ID:?Set ANTHROPIC_VERTEX_PROJECT_ID for client Claude Vertex}"
-  : "${CLOUD_ML_REGION:?Set CLOUD_ML_REGION for client Claude Vertex}"
+  # Not ${VAR:?}: Bash 3.2 reports status 0 to the EXIT trap after that expansion fails.
+  [[ -n "${ANTHROPIC_VERTEX_PROJECT_ID:-}" ]] || { echo "sbx-dev: Set ANTHROPIC_VERTEX_PROJECT_ID for client Claude Vertex" >&2; exit 2; }
+  [[ -n "${CLOUD_ML_REGION:-}" ]] || { echo "sbx-dev: Set CLOUD_ML_REGION for client Claude Vertex" >&2; exit 2; }
   args+=(
     --env-arg "vertexProject=$ANTHROPIC_VERTEX_PROJECT_ID"
     --env-arg "vertexRegion=$CLOUD_ML_REGION"
