@@ -5,6 +5,13 @@ project-local worktrees. A sandbox agent can therefore plant commands that a lat
 invocation executes with host privileges. Git-aware shell prompts can trigger this on returning
 to the terminal. `safe.directory` does not protect an owned checkout from this attack.
 
+## SBX 0.50.0 host Git hardening
+
+SBX 0.50.0 stops host Git commands **run by SBX itself** from executing programs that a sandbox
+configures through the shared repository's `.git`. That removes one host-execution path, but it
+does not cover host shells, Git-aware prompts, IDEs or Git commands you run yourself, which still
+read the same writable metadata. The launcher audit below remains required on 0.50.0.
+
 ## Launcher checks
 
 All `*-sbx` launchers default to `SBX_GIT_AUDIT=compatible`. This trusts repository Git
