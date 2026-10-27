@@ -125,7 +125,7 @@ def audit_worktrees(root, allow_integrations=False):
     pending = [(base, root, False)]
     while pending:
         directory, owner, inside_repository = pending.pop()
-        for path in directory.iterdir():
+        for path in sorted(directory.iterdir()):
             mode = path.lstat().st_mode
             if path.name.startswith(".git.sbx-quarantine-"):
                 raise UnsafeMetadata(f"{path}: {QUARANTINE_RECOVERY}")
@@ -168,7 +168,7 @@ def audit_hooks(directory):
     pending = [directory]
     while pending:
         current = pending.pop()
-        for hook in current.iterdir():
+        for hook in sorted(current.iterdir()):
             if hook.is_symlink():
                 raise UnsafeMetadata(f"{hook}: metadata symlink")
             if hook.is_dir():
@@ -202,7 +202,7 @@ def audit(root, expected_identity=None, scan_worktrees=True, allow_integrations=
             continue
         visited.add(directory_identity)
         metadata_root = directory == metadata or ((directory / "config").is_file() and (directory / "HEAD").is_file())
-        for path in directory.iterdir():
+        for path in sorted(directory.iterdir()):
             if metadata_root and path.name in {"objects", "refs", "logs", "lfs"}:
                 continue
             if path.name in {"config", "config.worktree"}:
