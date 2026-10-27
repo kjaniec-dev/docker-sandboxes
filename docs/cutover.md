@@ -485,6 +485,13 @@ Repository impact:
   `mixins/dev` mount must be declared by the kit; undeclared targets are rejected.
 - Existing project sandboxes keep their previous storage semantics and are not recreated by this change.
 
+The version floor checks `client.version` only, because `sbx version --json` must work without a
+running daemon (the offline suite relies on this). A CLI/daemon mismatch is not checked by this
+repository. Verify on a 0.50.0 host whether the CLI replaces or refuses an older running daemon
+(`sbx version --json` after upgrading, before stopping it) and record the observed behavior here;
+add a server-version check only if the daemon can keep running mismatched. `tests/smoke.sh` now
+applies the same floor before creating any sandbox.
+
 **Native verification is pending.** These changes passed `tests/validate.sh --offline`
 (**142 tests**), ShellCheck and Ruff in an environment without SBX. Before merging, run on a
 0.50.0 host: full `tests/validate.sh` (five source kit inspections, including the one-time rebuild,
