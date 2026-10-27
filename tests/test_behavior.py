@@ -68,7 +68,7 @@ with open(os.environ["SBX_TEST_LOG"], "a") as stream:
     stream.write(json.dumps({"argv": args, "builder": os.environ.get("SBX_KIT_BUILDER")}) + "\\n")
 if args == ["version", "--json"]:
     print(os.environ.get("SBX_TEST_VERSION", json.dumps({
-        "client": {"version": "v0.49.2", "revision": "testhash"},
+        "client": {"version": "v0.50.0", "revision": "testhash"},
         "server": {"state": "unavailable", "error": "sandbox daemon not running"},
     })))
 elif args[:2] == ["env", "run"]:
@@ -125,7 +125,7 @@ elif args[:1] != ["run"]:
         self.assertFalse(any(call["argv"][:2] == ["env", "run"] or call["argv"][:1] == ["run"] for call in self.calls()))
 
     def test_supported_version_floor_and_newer_releases(self):
-        for version in ("v0.49.2", "v0.49.3", "v0.50.0", "v1.0.0", "v0.49.2+build.5"):
+        for version in ("v0.50.0", "v0.50.1", "v0.51.0", "v1.0.0", "v0.50.0+build.5"):
             with self.subTest(version=version):
                 self.reset_log()
                 result = self.launch(env={"SBX_TEST_VERSION": json.dumps({
@@ -136,7 +136,7 @@ elif args[:1] != ["run"]:
                 self.assertEqual(self.calls()[0]["argv"], ["version", "--json"])
 
     def test_old_malformed_and_floor_prerelease_versions_are_rejected(self):
-        for version in ("v0.48.0", "v0.49.0", "v0.49.1", "v0.49.2-rc.1", "v0.49", "v0.049.2", ""):
+        for version in ("v0.48.0", "v0.49.1", "v0.49.2", "v0.49.9", "v0.50.0-rc.1", "v0.50", "v0.050.0", ""):
             with self.subTest(version=version):
                 self.reset_log()
                 self.assert_no_launch(self.launch(env={"SBX_TEST_VERSION": json.dumps({

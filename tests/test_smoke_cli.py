@@ -88,6 +88,11 @@ elif args[:3] == ["exec", "-i", name]:
     if not state["running"] or args[3:6] != ["/opt/sbx-dev/serena/bin/python", "-", "codex"]:
         sys.exit("unexpected infrastructure check")
     sys.stdin.read()
+    if scenario == "exec-unavailable":
+        print("sandbox not found", file=sys.stderr)
+        sys.exit(125)
+    if scenario == "check-fails":
+        sys.exit(1)
 else:
     sys.exit("unexpected SBX command: " + repr(args))
 path.write_text(json.dumps(state))
@@ -188,6 +193,20 @@ path.write_text(json.dumps(state))
                 ])
                 self.assertTrue(Path(json.loads(self.state.read_text())["workspace"]).is_dir())
                 self.assertIn("smoke: cleanup failed", result.stderr)
+
+    def test_exec_start_failure_is_distinguished_from_a_failed_check(self):
+        for scenario, message in (("exec-unavailable", f"smoke: fresh infrastructure check could not start in {NAME} (sbx exit 125"),
+                                  ("check-fails", "smoke: fresh infrastructure check failed")):
+            with self.subTest(scenario=scenario):
+                self.log.unlink(missing_ok=True)
+                self.state.write_text(json.dumps({"exists": False, "running": False, "generation": 0}))
+                result = self.run_smoke(SBX_TEST_SCENARIO=scenario)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(message, result.stderr)
+                self.assertEqual([call[:2] for call in self.calls()], [
+                    ["ls", "--json"], ["env", "run"], ["exec", "-i"], ["env", "rm"],
+                ])
+                self.assertFalse(Path(json.loads(self.state.read_text())["workspace"]).exists())
 
     def test_occupied_name_never_removes_existing_sandbox(self):
         result = self.run_smoke(SBX_TEST_SCENARIO="occupied")

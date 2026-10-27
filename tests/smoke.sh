@@ -69,6 +69,16 @@ python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) a
 owned=true
 echo "smoke: $profile/$agent sandbox=$name logs=$logs"
 apply() { sbx env run "${files[@]}" "${args[@]}" --detach --force; }
+# SBX 0.50.0+ reserves exec status 125 for commands it could not start, e.g. a missing sandbox.
+exec_failed() {
+  local stage="$1" what="$2" status="$3"
+  if [[ "$status" == 125 ]]; then
+    echo "smoke: $stage $what could not start in $name (sbx exit 125; logs: $logs)" >&2
+  else
+    echo "smoke: $stage $what failed (logs: $logs)" >&2
+  fi
+  return 1
+}
 check() {
   local stage="$1"
   local -a check_args=(exec -i "$name")
@@ -83,11 +93,10 @@ check() {
     vertex_placeholder="$(python3 "$ROOT/workloads/claude-dev/token-placeholder.py" "$name" "$CLOUD_ML_REGION")"
     check_args=(env exec -i "${args[@]}" --env "ANTHROPIC_AUTH_TOKEN=$vertex_placeholder" "${files[@]}" --)
   fi
-  if ! sbx "${check_args[@]}" /opt/sbx-dev/serena/bin/python - "$agent" "$repo" "$stage" "$name" \
-    < "$ROOT/tests/smoke-check.py" >"$logs/$stage-check.log" 2>&1; then
-    echo "smoke: $stage infrastructure check failed (logs: $logs)" >&2
-    return 1
-  fi
+  local status=0
+  sbx "${check_args[@]}" /opt/sbx-dev/serena/bin/python - "$agent" "$repo" "$stage" "$name" \
+    < "$ROOT/tests/smoke-check.py" >"$logs/$stage-check.log" 2>&1 || status=$?
+  [[ "$status" == 0 ]] || exec_failed "$stage" "infrastructure check" "$status"
   if [[ "${SBX_SMOKE_MODEL:-0}" == 1 ]]; then
     local left=$((RANDOM % 800 + 100)) right=$((RANDOM % 800 + 100)) prompt
     local -a model_args exec_args=(exec "$name")
@@ -107,8 +116,8 @@ check() {
         model_args=(junie --skip-update-check --output-format text "$prompt") ;;
       copilot) model_args=(copilot -p "$prompt" --silent) ;;
     esac
-    if ! python3 - "${SBX_SMOKE_REQUEST_TIMEOUT:-180}" sbx "${exec_args[@]}" "${model_args[@]}" \
-      >"$logs/$stage-model.log" 2>"$logs/$stage-model-error.log" <<'PY'
+    python3 - "${SBX_SMOKE_REQUEST_TIMEOUT:-180}" sbx "${exec_args[@]}" "${model_args[@]}" \
+      >"$logs/$stage-model.log" 2>"$logs/$stage-model-error.log" <<'PY' || status=$?
 import os, signal, subprocess, sys
 process = subprocess.Popen(sys.argv[2:], stdin=subprocess.DEVNULL, start_new_session=True)
 try:
@@ -122,10 +131,7 @@ except subprocess.TimeoutExpired:
     status = 124
 sys.exit(status if status >= 0 else 128 - status)
 PY
-    then
-      echo "smoke: $stage model request failed (logs: $logs)" >&2
-      return 1
-    fi
+    [[ "$status" == 0 ]] || exec_failed "$stage" "model request" "$status"
     python3 "$ROOT/tests/model-response.py" "$agent" "$((left + right))" "$logs/$stage-model.log"
   fi
   echo "smoke: $stage passed"

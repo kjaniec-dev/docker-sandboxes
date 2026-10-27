@@ -17,7 +17,7 @@ if [[ "$offline" == true ]]; then
   echo "validate: PASS offline behavior (V3 source kit builds and runtime not checked)"
   exit 0
 fi
-command -v sbx >/dev/null || { echo "validate: SBX 0.49.2+ is required" >&2; exit 1; }
+command -v sbx >/dev/null || { echo "validate: SBX 0.50.0+ is required" >&2; exit 1; }
 export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
 sbx version --json | python3 "$ROOT/bin/check-sbx-version.py"
 for kit in workloads/claude-dev workloads/opencode-dev workloads/junie-dev mixins/dev mixins/vertex; do

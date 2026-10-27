@@ -451,3 +451,43 @@ IDs, so a verified restore requires targeted ownership repair on the transferred
 These synthetic tests do not establish complete preservation of arbitrary custom real-project
 state. Existing VM replacement requires a separate backup and maintenance decision; it must not
 be inferred from a successful pin refresh or from a same-name recreate.
+
+## SBX 0.50.0 security baseline, 2026-10-27
+
+The [0.50.0 release](https://github.com/docker/sbx-releases/releases/tag/v0.50.0), published
+2026-10-26 as a stable release, hardens host execution: host Git run by SBX no longer executes
+programs a sandbox configures through the shared `.git`, `sbx cp` blocks further symlink escapes
+through alternate host paths, browser/clipboard/self-update helpers run only from trusted system
+locations, MCP OAuth blocks cross-origin credential redirects, and local source kits are reused only
+when their digests match recorded builds. The launcher, validation and repository instructions now
+require **0.50.0+**. Regression coverage rejects stable 0.49.2 and the 0.50.0 prerelease while
+accepting stable 0.50.0 and newer versions.
+
+Repository impact:
+
+- **Git audit is retained.** The host Git fix covers Git invocations made by SBX itself. Host shells,
+  Git-aware prompts, IDEs and manual `git` commands still read the writable shared metadata; see
+  [writable Git metadata](git-metadata.md#sbx-0500-host-git-hardening).
+- **`sbx exec` exit status 125** now means SBX could not start the command, for example because the
+  sandbox does not exist. `tests/smoke.sh` reports this separately from a failed in-sandbox check or
+  model request. The launcher passes child status through unchanged.
+- **Environment MCP commands** need host execution approval and are disabled by
+  `--skip-host-commands`. `env/common.sbxenv.yaml` declares only the remote Context7 URL and Serena
+  stays sandbox-local, so no environment declares a host MCP command.
+- **Local source kits rebuild once** after the upgrade because recorded digests are now verified.
+  Expect the first `tests/validate.sh` and launch of each profile to rebuild `mixins/dev` and the
+  thin workloads in the native builder.
+- **Persistent kit volumes** survive kit updates and same-name delete/recreate, but only for sandboxes
+  created on 0.50.0+. This repository declares none. Smoke's delete/recreate stage requires the
+  home-directory marker to disappear; a failure there after the upgrade means a selected official
+  kit now persists that path and must be investigated, not suppressed.
+- **Host mounts** (`host-mount@1`, `--mount`, `mounts:` in environment files) are not used. A future
+  `mixins/dev` mount must be declared by the kit; undeclared targets are rejected.
+- Existing project sandboxes keep their previous storage semantics and are not recreated by this change.
+
+**Native verification is pending.** These changes passed `tests/validate.sh --offline`
+(**142 tests**), ShellCheck and Ruff in an environment without SBX. Before merging, run on a
+0.50.0 host: full `tests/validate.sh` (five source kit inspections, including the one-time rebuild,
+and seven environment plans), then the complete fresh, stop/start and delete/recreate smoke matrix,
+prioritizing personal Claude, worktrees and Git audit, Context7/Serena registration, the client
+Claude Vertex plan and sandbox restarts. Record the CLI/daemon revision and results here.
