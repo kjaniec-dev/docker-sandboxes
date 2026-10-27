@@ -493,7 +493,7 @@ add a server-version check only if the daemon can keep running mismatched. `test
 applies the same floor before creating any sandbox.
 
 **Native verification is pending.** These changes passed `tests/validate.sh --offline`
-(**142 tests**), ShellCheck and Ruff in an environment without SBX. Before merging, run on a
+(**144 tests**), ShellCheck and Ruff in an environment without SBX. Before merging, run on a
 0.50.0 host: full `tests/validate.sh` (five source kit inspections, including the one-time rebuild,
 and seven environment plans), then the complete fresh, stop/start and delete/recreate smoke matrix,
 prioritizing personal Claude, worktrees and Git audit, Context7/Serena registration, the client
