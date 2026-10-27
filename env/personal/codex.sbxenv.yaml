@@ -5,8 +5,8 @@ args:
     default: /home/agent/.agents/skills
 
 kits:
-  # Official 0.162.1 resolved 2026-10-15; latest requires an unsupported sessions capability.
-  - docker/sbx-kit-codex@sha256:fc2cafe55c291e2bb5d70954bb5774c7d10b3c6d0ce8c507a828ac1250edb06b
+  # Official 0.164.0 resolved 2026-10-27; matches latest and newest stable tag.
+  - docker/sbx-kit-codex@sha256:95d86d1a99ac86f9190c3da8489ea0631b0bb3ab5f15d2444048f8d6dae9cc21
 
 env:
   SBX_AGENT_KIND: codex

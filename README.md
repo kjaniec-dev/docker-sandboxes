@@ -198,8 +198,8 @@ sbx mcp load unity --sandbox <sandbox-name>
 Serena runs inside the sandbox as a local stdio MCP server against the mounted project.
 Do not register it as a host `sbx mcp --command` server.
 `mixins/dev/configure-agent.py` preserves unrelated agent settings while registering Serena.
-It supplies Junie's missing gateway registration. Native `agent-context.directory` places Claude
-and Codex instructions in their agent homes; no Codex instruction symlink is needed.
+It supplies Junie's missing gateway registration. Native `agent-context.directory` places Claude,
+Codex and OpenCode instructions in their agent homes; no Codex instruction symlink is needed.
 Official kits register the gateway for the other agents.
 Their OpenCode/Antigravity `jq` merge can erase malformed MCP maps. The shared jq launcher validates
 those configuration paths whenever they appear in its arguments, including relative paths and

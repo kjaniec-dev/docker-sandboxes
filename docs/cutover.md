@@ -398,3 +398,56 @@ remaining agents' runtime matrix. No disposable smoke sandboxes remained afterwa
 
 The [workaround register](workarounds.md) records retirement conditions. Passing smoke with the
 ownership/thin-workload workarounds enabled does not establish that upstream still needs them.
+
+
+## Official kit refresh on SBX 0.49.2, 2026-10-27
+
+Live Docker Hub tag enumeration and OCI descriptor inspection checked all six selected official
+repositories. Each `latest` tag matched its newest numbered stable release at inspection time.
+The environment files retain immutable top-level OCI index digests, with linux/arm64 and
+linux/amd64 support; no official descriptor was copied or patched.
+
+| Agent | Previous selection | Selected version | Result |
+| --- | --- | --- | --- |
+| Claude, personal and client | 2.1.292 | 2.1.310 | New artifact |
+| Codex | 0.162.1 | 0.164.0 | New artifact |
+| OpenCode | 1.18.33 | 1.19.4 | New artifact |
+| Antigravity | Kit 1.0.0 | Kit 1.0.0 | Already newest official artifact; digest unchanged |
+| Junie | 26.9.21 / 3294.5 | 26.9.21 / 3294.5 | Already newest official artifact; digest unchanged |
+| Copilot | 1.0.86 | 1.0.86 | Already newest official artifact; digest unchanged |
+
+The selected Claude, Codex and OpenCode descriptors provide optional agent-context@2 plus an
+agent-context@1 fallback, without adding unsupported required capabilities. Actual native creation
+on CLI/daemon 0.49.2 succeeded. OpenCode's composed instructions now live at
+`~/.config/opencode/AGENTS.md`; smoke checks and context regression tests require that native file
+and reject an ancestor-only substitute. A disposable probe confirmed the file contains the shared
+dev context link. No agent configuration workaround was added.
+
+Final `tests/validate.sh` passed 141 regression tests, five native source kit inspections and all
+seven environment plans. Fresh, restart and delete/recreate infrastructure smoke passed for
+personal Claude, Codex, OpenCode, Antigravity and Junie, and client Copilot. These runs checked the
+shared tooling, Chromium, read-only skills, native context, sandbox-local Serena, Context7 gateway,
+workspace ignores and lifecycle persistence. The initial OpenCode smoke failure was the old
+ancestor-context test expectation; the corrected native-path check passed the complete lifecycle.
+Client Claude received the new pin and passed its native plan only: the host has no approved
+Vertex project, region or local auth overlay for a runtime test.
+
+Separate minimal native probes confirmed installed Claude 2.1.310, Codex 0.164.0 and OpenCode 1.19.4.
+Claude and Codex completed verified authenticated model requests. OpenCode's request reached its
+provider but failed with HTTP 401 `api_key_expired`; its provider credentials were not changed.
+This credential failure is independent of the successful kit infrastructure and lifecycle checks.
+
+A missing native builder was provisioned with 16 GiB RAM and a 64 GiB engine-store volume.
+The shared dev kit was cold-built through native SBX; subsequent validation used its cache.
+The builder was stopped after compilation, retaining its cache. Disposable test VMs were removed
+with absence verification. Logs and registry evidence live under `.superpowers/kit-refresh-20261027/`.
+
+Existing project sandboxes are not refreshed by editing these pins. No project sandbox was
+removed or recreated during this validation. Old-to-new disposable state-transfer canaries passed
+for Claude 2.1.292 → 2.1.310 and Codex 0.162.1 → 0.164.0: actual conversations resumed with the same
+session IDs and recalled hidden tokens while newly generated settings/auth remained intact.
+Native `sbx cp` starts a stopped source and remaps downloaded/uploaded ownership to host numeric
+IDs, so a verified restore requires targeted ownership repair on the transferred state paths.
+These synthetic tests do not establish complete preservation of arbitrary custom real-project
+state. Existing VM replacement requires a separate backup and maintenance decision; it must not
+be inferred from a successful pin refresh or from a same-name recreate.

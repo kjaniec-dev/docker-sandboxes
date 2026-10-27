@@ -6,8 +6,8 @@ args:
 
 kits:
   - ../../workloads/opencode-dev
-  # Official latest resolved 2026-10-15 (OpenCode 1.18.33).
-  - docker/sbx-kit-opencode-mixin@sha256:0833c7531999fc02e0f941f61952bc437d1e4138c9dab35fe6e871646f3ebeee
+  # Official 1.19.4 resolved 2026-10-27; matches latest and newest stable tag.
+  - docker/sbx-kit-opencode-mixin@sha256:c3ca18adb69da2b1abeb16a7ac30b953ccf0a92d1aa76d3647e02b178ee5c59d
 
 env:
   SBX_AGENT_KIND: opencode

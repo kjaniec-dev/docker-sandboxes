@@ -34,7 +34,8 @@ def check_lifecycle(stage, marker, token):
 
 
 def check_context(agent, workspace, home):
-    native = {"claude": ".claude/CLAUDE.md", "codex": ".codex/AGENTS.md"}
+    native = {"claude": ".claude/CLAUDE.md", "codex": ".codex/AGENTS.md",
+              "opencode": ".config/opencode/AGENTS.md"}
     guidance = [home / native[agent]] if agent in native else list(Path(workspace).parent.glob("*.md"))
     check(any(path.is_file() and "/usr/share/sandbox/kit/dev/dev-context.md" in path.read_text()
               for path in guidance), "Native common agent context missing")

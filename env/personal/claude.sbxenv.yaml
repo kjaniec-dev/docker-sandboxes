@@ -6,8 +6,8 @@ args:
 
 kits:
   - ../../workloads/claude-dev
-  # Official 2.1.292 resolved 2026-10-15; newer than the latest tag's 2.1.291.
-  - docker/sbx-kit-claude-mixin@sha256:38797566d13559dd8388409a557aba5820fa2adc50fbc6497cba4be2649d41b4
+  # Official 2.1.310 resolved 2026-10-27; matches latest and newest stable tag.
+  - docker/sbx-kit-claude-mixin@sha256:9e26364cd020386cb033cc1c0d6b24c3ece876ee945635685e9bf963dc09cdaa
 
 env:
   SBX_AGENT_KIND: claude

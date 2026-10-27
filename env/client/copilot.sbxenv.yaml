@@ -5,7 +5,7 @@ args:
     default: /home/agent/.copilot/skills
 
 kits:
-  # Official latest resolved 2026-10-15 (Copilot 1.0.86).
+  # Official latest checked 2026-10-27 (Copilot 1.0.86); digest unchanged.
   - docker/sbx-kit-copilot@sha256:a75b185761a3c438c143fed0ee03d46aee7f8cc5b7f31816815bf10e97d8a886
 
 env:
