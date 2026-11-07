@@ -38,7 +38,7 @@ state = json.loads(path.read_text())
 name = "smoke-personal-codex-0123456789"
 scenario = os.environ.get("SBX_TEST_SCENARIO", "normal")
 if args == ["version", "--json"]:
-    print(os.environ.get("SBX_TEST_VERSION") or json.dumps({"client": {"version": "v0.50.0"}}))
+    print(os.environ.get("SBX_TEST_VERSION") or json.dumps({"client": {"version": "v0.51.0"}}))
     sys.exit(0)
 if args == ["ls", "--json"]:
     if state.get("removal_succeeded") and scenario == "post-remove-inventory-error":
@@ -233,12 +233,12 @@ path.write_text(json.dumps(state))
                 self.assertFalse(Path(json.loads(self.state.read_text())["workspace"]).exists())
 
     def test_versions_below_the_floor_never_touch_sandboxes(self):
-        for version in ("v0.49.2", "v0.50.0-rc.1"):
+        for version in ("v0.49.2", "v0.50.0", "v0.50.1", "v0.51.0-rc.1"):
             with self.subTest(version=version):
                 self.log.unlink(missing_ok=True)
                 result = self.run_smoke(SBX_TEST_VERSION=json.dumps({"client": {"version": version}}))
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn("Docker Sandboxes 0.50.0+ is required", result.stderr)
+                self.assertIn("Docker Sandboxes 0.51.0+ is required", result.stderr)
                 self.assertEqual(self.raw_calls(), [["version", "--json"]])
 
     def test_occupied_name_never_removes_existing_sandbox(self):
