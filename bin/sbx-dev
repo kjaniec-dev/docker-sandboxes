@@ -176,6 +176,14 @@ session_started=true
 # Apply/reconcile the declarative environment without opening an agent session.
 run_sbx env run "${files[@]}" --name "$name" --detach "${args[@]}"
 
+# Reuse the native host-global Context7 registration and its OAuth metadata.
+# Do not declare a second definition in the env files or change host credentials.
+if ! run_sbx mcp load context7 --sandbox "$name"; then
+  echo "sbx-dev: failed to attach Context7; check 'sbx mcp inspect context7' and 'sbx mcp auth status context7'." >&2
+  echo "sbx-dev: if unregistered, register it once with 'sbx mcp add context7 --url https://mcp.context7.com/mcp'." >&2
+  exit 1
+fi
+
 if [[ "$agent" == junie ]]; then
   brave=true
   for argument in "$@"; do
