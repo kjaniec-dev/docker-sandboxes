@@ -73,6 +73,10 @@ if args == ["version", "--json"]:
     })))
 elif args[:2] == ["env", "run"]:
     sys.exit(int(os.environ.get("SBX_TEST_ENV_EXIT", "0")))
+elif args[:3] == ["mcp", "load", "context7"]:
+    if len(args) != 5 or args[3] != "--sandbox":
+        sys.exit("unexpected Context7 load arguments")
+    sys.exit(int(os.environ.get("SBX_TEST_MCP_LOAD_EXIT", "0")))
 elif args[:3] == ["secret", "ls", "--sandbox"]:
     entries = json.loads(os.environ.get("SBX_TEST_CUSTOM_SECRETS", json.dumps([{
         "scope": args[3], "env": "ANTHROPIC_AUTH_TOKEN", "kind": "command",
@@ -158,6 +162,34 @@ elif args[:1] != ["run"]:
         self.assertNotIn("--detached", argv)
         self.assertNotIn("--force", argv)
         self.assertNotIn("--auto-approve", argv)
+
+    def test_host_registered_context7_is_loaded_after_provision_before_agent(self):
+        result = self.launch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [call["argv"] for call in self.calls()]
+        name_args = self.operation(["env", "run"])["argv"]
+        name = name_args[name_args.index("--name") + 1]
+        self.assertEqual(self.operation(["mcp", "load", "context7"])["argv"],
+                         ["mcp", "load", "context7", "--sandbox", name])
+        self.assertLess(next(i for i, call in enumerate(calls) if call[:2] == ["env", "run"]),
+                        next(i for i, call in enumerate(calls) if call[:2] == ["mcp", "load"]))
+        self.assertLess(next(i for i, call in enumerate(calls) if call[:2] == ["mcp", "load"]),
+                        next(i for i, call in enumerate(calls) if call[:1] == ["run"]))
+        self.reset_log()
+        # Reattaching loads the same host-global name again, without adding it.
+        self.assertEqual(self.launch().returncode, 0)
+        self.assertEqual(len([call for call in self.calls() if call["argv"][:2] == ["mcp", "load"]]), 1)
+        self.assertFalse(any(call["argv"][:2] == ["mcp", "add"] for call in self.calls()))
+
+    def test_failed_context7_attachment_never_launches_agent(self):
+        result = self.launch(env={"SBX_TEST_MCP_LOAD_EXIT": "23"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("failed to attach Context7", result.stderr)
+        self.assertIn("sbx mcp add context7", result.stderr)
+        calls = [call["argv"] for call in self.calls()]
+        self.assertTrue(any(call[:2] == ["env", "run"] for call in calls))
+        self.assertTrue(any(call[:3] == ["mcp", "load", "context7"] for call in calls))
+        self.assertFalse(any(call[:1] == ["run"] or call[:2] == ["env", "exec"] for call in calls))
 
     def test_personal_and_client_agent_matrix(self):
         for profile, supported in (("personal", {"claude", "codex", "opencode", "antigravity", "junie"}), ("client", {"claude", "copilot"})):
