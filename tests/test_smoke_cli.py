@@ -296,7 +296,7 @@ path.write_text(json.dumps(state))
                 self.assertFalse(state["exists"])
                 self.assertTrue(Path(state["workspace"]).is_dir())
                 self.assertEqual([call[:2] for call in self.calls()], [
-                    ["ls", "--json"], ["env", "run"], ["exec", "-i"],
+                    ["ls", "--json"], ["env", "run"], ["mcp", "load"], ["exec", "-i"],
                     ["stop", NAME], ["env", "run"], ["exec", "-i"],
                     ["env", "rm"], ["ls", "--json"],
                 ])
