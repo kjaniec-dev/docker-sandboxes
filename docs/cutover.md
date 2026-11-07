@@ -1,5 +1,24 @@
 # V3 cutover evidence
 
+## Official kit refresh, 2026-11-07
+
+Docker Hub's official V3 kit tags were checked for all six agents. The selected
+immutable artifacts are Claude 2.1.314, Codex 0.166.0, OpenCode 1.19.5,
+Antigravity workload 1.0.0, Junie workload 26.9.21 and Copilot workload 1.0.86.
+The Codex `latest` tag lagged its newest numbered release. The old Docker
+Antigravity and Junie repositories were unavailable; their official `sbx`
+workloads have different agent names. Both `latest` and numbered tags for the
+three `sbx` workloads resolved to the selected digest at inspection time.
+The numbered tags for these workloads are mutable, so a matching version
+number does not imply an unchanged artifact.
+
+On SBX 0.51.0, `tests/validate.sh` passed 147 tests, five native kit inspections
+and seven environment plans. Infrastructure and lifecycle smoke passed for
+personal Antigravity, Junie, Codex, Claude and OpenCode, and client Copilot.
+Client Claude Vertex was checked by plan only. Model authentication was not
+tested. Existing project sandboxes require recreation to use new pins; they
+were not replaced by this refresh.
+
 The repository now contains the V3 architecture described by `AGENTS.md` and the environment files.
 Legacy harnesses, shared launch/rebuild/skills helpers, per-agent rebuild commands, scaffold generator,
 policy wrapper, tar exports, wiring tests and obsolete documentation have been removed.
