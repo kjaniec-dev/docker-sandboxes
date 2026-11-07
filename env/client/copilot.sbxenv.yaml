@@ -5,8 +5,8 @@ args:
     default: /home/agent/.copilot/skills
 
 kits:
-  # Official Copilot V3 workload (sbx/copilot); digest resolved 2026-11-03 (latest = 1.0.86).
-  - docker.io/sbx/copilot@sha256:5ded28ead1a35c6ca1aa1023601447452879f818aa3801567dfbb7f40122c31e
+  # Official Copilot V3 workload 1.0.86, resolved 2026-11-07.
+  - docker.io/sbx/copilot@sha256:e4323d2f57b92383a688f6fe62310bd0309acb1b30d1bb2e20fa89fb5526525d
 
 env:
   SBX_AGENT_KIND: copilot
