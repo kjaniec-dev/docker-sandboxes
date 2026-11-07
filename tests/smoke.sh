@@ -138,6 +138,9 @@ PY
   echo "smoke: $stage passed"
 }
 apply >"$logs/create.log" 2>&1 || { echo "smoke: creation failed (logs: $logs)" >&2; exit 1; }
+# Use the existing host registration; do not attempt to re-register the OAuth server.
+sbx mcp load context7 --sandbox "$name" >"$logs/fresh-mcp.log" 2>&1 ||
+  { echo "smoke: fresh Context7 attach failed (logs: $logs/fresh-mcp.log)" >&2; exit 1; }
 check fresh
 sbx stop "$name" >"$logs/stop.log" 2>&1
 apply >"$logs/restart.log" 2>&1
@@ -148,6 +151,8 @@ inventory="$(sbx ls --json)"
 python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) and all(isinstance(s,dict) and isinstance(s.get("name"),str) for s in d), "invalid sandbox inventory"; assert not any(s["name"]==sys.argv[1] for s in d), "removed sandbox still present"' "$name" <<<"$inventory"
 owned=true
 apply >"$logs/recreate.log" 2>&1 || { echo "smoke: recreation failed (logs: $logs)" >&2; exit 1; }
+sbx mcp load context7 --sandbox "$name" >"$logs/recreate-mcp.log" 2>&1 ||
+  { echo "smoke: recreate Context7 attach failed (logs: $logs/recreate-mcp.log)" >&2; exit 1; }
 check recreated
 if [[ "${SBX_SMOKE_MODEL:-0}" == 1 ]]; then
   echo "smoke: PASS $profile/$agent infrastructure, lifecycle and authenticated model"
