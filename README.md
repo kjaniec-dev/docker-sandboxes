@@ -97,7 +97,13 @@ agy-sbx
 junie-sbx
 ```
 
-All agent arguments pass through as individual arguments. Junie defaults to `--brave`;
+`codex-sbx update` runs the [official OpenAI standalone installer](https://developers.openai.com/codex/cli/)
+inside the current sandbox. It installs the latest stable CLI in the agent's user directory, ahead
+of the kit's unmanaged binary on PATH, without recreating the sandbox or replacing its history,
+settings or authentication. Restart Codex after updating. This updates the executable, not the
+sandbox's kit composition or base image. `codex-sbx update --help` keeps native CLI help behavior.
+
+Other agent arguments pass through as individual arguments. Junie defaults to `--brave`;
 an explicit `--no-brave` overrides it. OpenCode defaults to `--auto` and the OpenCode Go provider;
 an explicit `--no-auto` overrides the launch default.
 

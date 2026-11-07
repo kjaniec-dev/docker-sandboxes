@@ -176,7 +176,15 @@ session_started=true
 # Apply/reconcile the declarative environment without opening an agent session.
 run_sbx env run "${files[@]}" --name "$name" --detach "${args[@]}"
 
-if [[ "$agent" == junie ]]; then
+if [[ "$agent" == codex && $# == 1 && "$1" == update ]]; then
+  # The kit supplies an unmanaged binary, so bootstrap upstream's supported updater.
+  # Expand HOME inside the sandbox, not on the host.
+  # shellcheck disable=SC2016
+  run_sbx exec "$name" bash -euo pipefail -c '
+    curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
+    "$HOME/.local/bin/codex" --version
+  '
+elif [[ "$agent" == junie ]]; then
   brave=true
   for argument in "$@"; do
     case "$argument" in --brave|--brave=*|--no-brave) brave=false ;; esac

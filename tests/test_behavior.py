@@ -82,7 +82,7 @@ elif args[:3] == ["secret", "ls", "--sandbox"]:
     print(json.dumps({"custom_secrets": entries}))
 elif args[:3] == ["secret", "ls", "--global"]:
     print('{"custom_secrets": [{"env": "JUNIE_API_KEY", "targets": ["junie.jetbrains.com", "ingrazzio-cloud-prod.labs.jb.gg"], "placeholder": "sbx-cs-test"}]}')
-elif args[:2] == ["env", "exec"]:
+elif args[:2] == ["env", "exec"] or args[:1] == ["exec"]:
     sys.exit(int(os.environ.get("SBX_TEST_RUN_EXIT", "0")))
 elif args[:1] == ["run"]:
     if os.environ.get("SBX_TEST_STDIN_LOG"):
@@ -253,6 +253,64 @@ elif args[:1] != ["run"]:
         argv = self.operation(["run"])["argv"]
         self.assertEqual(argv[argv.index("--") + 1:], args)
         self.assertFalse(marker.exists())
+
+
+    def test_codex_update_installs_in_sandbox_without_changing_history(self):
+        result = self.launch(args=["update"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = self.operation(["exec"])["argv"]
+        provision = self.operation(["env", "run"])["argv"]
+        self.assertEqual(argv[1], provision[provision.index("--name") + 1])
+        self.assertFalse(any(call["argv"][:1] == ["run"] for call in self.calls()))
+        history = self.home / ".codex/sessions/keep.jsonl"
+        history.parent.mkdir(parents=True)
+        history.write_text("existing conversation\n")
+        installer = (
+            'test "$CODEX_NON_INTERACTIVE" = 1 || exit 64\n'
+            'mkdir -p "$HOME/.local/bin"\n'
+            "printf '#!/bin/sh\\necho codex-cli test-update\\n' > \"$HOME/.local/bin/codex\"\n"
+            'chmod +x "$HOME/.local/bin/codex"\n'
+        )
+        curl = self.tools / "curl"
+        curl.write_text("#!/usr/bin/env python3\nimport sys\n"
+                        "if sys.argv[1:] != ['-fsSL', 'https://chatgpt.com/codex/install.sh']: sys.exit(65)\n"
+                        f"print({installer!r})\n")
+        curl.chmod(0o755)
+        installed = subprocess.run(argv[2:], env=self.environ, text=True, capture_output=True)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        self.assertIn("codex-cli test-update", installed.stdout)
+        self.assertEqual(history.read_text(), "existing conversation\n")
+
+    def test_codex_update_download_failure_is_not_reported_as_success(self):
+        result = self.launch(args=["update"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = self.operation(["exec"])["argv"]
+        curl = self.tools / "curl"
+        curl.write_text("#!/bin/sh\nexit 22\n")
+        curl.chmod(0o755)
+        installed = subprocess.run(argv[2:], env=self.environ, text=True, capture_output=True)
+        self.assertEqual(installed.returncode, 22, installed.stderr)
+
+    def test_codex_update_failure_preserves_status_and_runs_postflight(self):
+        config = self.repo / ".git/config"
+        result = self.launch(args=["update"], env={
+            "SBX_TEST_RUN_EXIT": "37", "SBX_TEST_MUTATION_STAGE": "exec",
+            "SBX_TEST_MUTATIONS": json.dumps([[str(config), "[core]\nfsmonitor = attack\n"]]),
+        })
+        self.assertEqual(result.returncode, 37, result.stderr)
+        self.assertIn("core.fsmonitor", result.stderr)
+        self.assertFalse((self.repo / ".git").exists())
+        self.assertEqual(len(list(self.repo.glob(".git.sbx-quarantine-*"))), 1)
+
+    def test_update_help_and_other_agents_keep_native_argument_handling(self):
+        for agent, arguments in (("codex", ["update", "--help"]), ("claude", ["update"])):
+            with self.subTest(agent=agent):
+                self.reset_log()
+                result = self.launch(agent=agent, args=arguments)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                argv = self.operation(["run"])["argv"]
+                self.assertEqual(argv[argv.index("--") + 1:], arguments)
+                self.assertFalse(any(call["argv"][:1] == ["exec"] for call in self.calls()))
 
     def test_environment_failure_never_attaches(self):
         result = self.launch(env={"SBX_TEST_ENV_EXIT": "17"})
