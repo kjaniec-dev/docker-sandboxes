@@ -73,6 +73,12 @@ elif args[:2] == ["env", "run"]:
     if not state["exists"]:
         state["generation"] += 1
     state.update(exists=True, running=True)
+elif args[:3] == ["mcp", "load", "context7"]:
+    if args != ["mcp", "load", "context7", "--sandbox", name] or not state["running"]:
+        sys.exit("cannot attach Context7 to missing or stopped sandbox")
+    if scenario == "mcp-load-fails":
+        sys.exit(23)
+    state["context7_generation"] = state["generation"]
 elif args == ["stop", name]:
     if not state["running"]:
         sys.exit("cannot stop a sandbox that is not running")
@@ -88,7 +94,7 @@ elif args[:2] == ["env", "rm"]:
         state.update(exists=False, running=False)
     state["removal_succeeded"] = True
 elif args[:3] == ["exec", "-i", name]:
-    if not state["running"] or args[3:6] != ["/opt/sbx-dev/serena/bin/python", "-", "codex"]:
+    if not state["running"] or state.get("context7_generation") != state["generation"] or args[3:6] != ["/opt/sbx-dev/serena/bin/python", "-", "codex"]:
         sys.exit("unexpected infrastructure check")
     sys.stdin.read()
     if scenario == "exec-unavailable":
@@ -136,13 +142,16 @@ path.write_text(json.dumps(state))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         calls = self.calls()
         self.assertEqual([call[:2] for call in calls], [
-            ["ls", "--json"], ["env", "run"], ["exec", "-i"],
+            ["ls", "--json"], ["env", "run"], ["mcp", "load"], ["exec", "-i"],
             ["stop", NAME], ["env", "run"], ["exec", "-i"],
-            ["env", "rm"], ["ls", "--json"], ["env", "run"],
+            ["env", "rm"], ["ls", "--json"], ["env", "run"], ["mcp", "load"],
             ["exec", "-i"], ["env", "rm"],
         ])
         checks = [call for call in calls if call[:2] == ["exec", "-i"]]
         self.assertEqual([call[-2] for call in checks], ["fresh", "restarted", "recreated"])
+        # A loaded global MCP is retained on restart, but must be re-attached after recreation.
+        self.assertEqual([call for call in calls if call[:2] == ["mcp", "load"]],
+                         [["mcp", "load", "context7", "--sandbox", NAME]] * 2)
         for call in calls:
             if call[:2] == ["env", "run"]:
                 self.assertIn("--detach", call)
@@ -154,6 +163,17 @@ path.write_text(json.dumps(state))
         self.assertFalse(state["exists"])
         self.assertFalse(Path(state["workspace"]).exists())
         self.assertIn("smoke: PASS personal/codex", result.stdout)
+
+    def test_context7_load_failure_blocks_smoke_and_cleans_disposable_sandbox(self):
+        result = self.run_smoke(SBX_TEST_SCENARIO="mcp-load-fails")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("smoke: fresh Context7 attach failed", result.stderr)
+        self.assertEqual([call[:2] for call in self.calls()], [
+            ["ls", "--json"], ["env", "run"], ["mcp", "load"], ["env", "rm"],
+        ])
+        state = json.loads(self.state.read_text())
+        self.assertFalse(state["exists"])
+        self.assertFalse(Path(state["workspace"]).exists())
 
     def test_malformed_inventory_never_creates_or_removes_a_sandbox(self):
         for inventory in ('not-json', 'null', '{}', '{"sandboxes": []}', '[{}]', '[null]', '[{"name": 42}]'):
@@ -214,7 +234,7 @@ path.write_text(json.dumps(state))
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn(message, result.stderr)
                 self.assertEqual([call[:2] for call in self.calls()], [
-                    ["ls", "--json"], ["env", "run"], ["exec", "-i"], ["env", "rm"],
+                    ["ls", "--json"], ["env", "run"], ["mcp", "load"], ["exec", "-i"], ["env", "rm"],
                 ])
                 self.assertFalse(Path(json.loads(self.state.read_text())["workspace"]).exists())
 
@@ -228,7 +248,7 @@ path.write_text(json.dumps(state))
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn(message, result.stderr)
                 self.assertEqual([call[:2] for call in self.calls()], [
-                    ["ls", "--json"], ["env", "run"], ["exec", "-i"], ["exec", NAME], ["env", "rm"],
+                    ["ls", "--json"], ["env", "run"], ["mcp", "load"], ["exec", "-i"], ["exec", NAME], ["env", "rm"],
                 ])
                 self.assertFalse(Path(json.loads(self.state.read_text())["workspace"]).exists())
 
@@ -252,7 +272,7 @@ path.write_text(json.dumps(state))
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("AssertionError: removed sandbox still present", result.stderr)
         self.assertEqual([call[:2] for call in self.calls()], [
-            ["ls", "--json"], ["env", "run"], ["exec", "-i"],
+            ["ls", "--json"], ["env", "run"], ["mcp", "load"], ["exec", "-i"],
             ["stop", NAME], ["env", "run"], ["exec", "-i"],
             ["env", "rm"], ["ls", "--json"],
         ])
