@@ -170,17 +170,30 @@ migration or deletion is not part of the launcher.
 
 ## MCP and instructions
 
-`env/common.sbxenv.yaml` declares Context7 once through the native SBX MCP gateway:
+Context7 is managed as **one host-global SBX MCP registration**, rather than being
+redeclared in `env/common.sbxenv.yaml`. This avoids a conflict with a previously registered
+Context7 server whose native definition includes discovered OAuth metadata.
+Inspect the existing registration first; do not remove it or overwrite its credentials.
 
-```yaml
-mcp:
-  servers:
-    - name: context7
-      url: https://mcp.context7.com/mcp
+```bash
+sbx mcp inspect context7
+# Only if unregistered:
+sbx mcp add context7 --url https://mcp.context7.com/mcp
+# If OAuth authorization is required:
+sbx mcp auth context7
 ```
 
-In Codex, `/mcp` lists the shared endpoint as `mcp-gateway`. Context7 is exposed through it,
-with tools such as `resolve-library-id` and `query-docs`, rather than as a separate MCP server entry.
+`bin/sbx-dev` attaches the already-registered server to the resolved sandbox name
+with `sbx mcp load context7 --sandbox <sandbox-name>` after the declarative environment
+has been applied, and before invoking the agent. The command does not register a
+new definition or alter host credentials. The attachment survives stop/start; a
+recreated sandbox needs a new load. `tests/smoke.sh` covers both cases.
+If a manual `sbx env run` bypasses the launcher, attach Context7 with
+`sbx mcp load context7 --sandbox <sandbox-name>`.
+
+In Codex, `/mcp` lists the shared endpoint as `mcp-gateway`. Context7 is
+exposed through it, with tools such as `resolve-library-id` and `query-docs`,
+rather than as a separate MCP server entry.
 
 Register other remote or host servers with native commands:
 
