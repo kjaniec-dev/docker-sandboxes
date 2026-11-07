@@ -18,9 +18,7 @@ kits:
     args:
       skillsPath: "${{ env.args.skillsPath }}"
 
-# Remote MCP servers belong to the native SBX gateway. Add common servers here
-# once instead of editing every agent's config.
-mcp:
-  servers:
-    - name: context7
-      url: https://mcp.context7.com/mcp
+# Context7 is host-registered with native `sbx mcp add` and attached by
+# bin/sbx-dev (and tests/smoke.sh) using `sbx mcp load`.
+# Do not redeclare it here: SBX 0.51.0 can reject a host-global registration
+# of the same name with a different definition (for example OAuth metadata).
