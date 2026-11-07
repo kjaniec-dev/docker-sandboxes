@@ -11,6 +11,21 @@ The release blocks `sbx cp` symlink escapes through mounted directories, verifie
 
 This repository already specifies destination hosts for Junie and client Vertex secrets. Check *machine-local* secrets and overlays separately. Source-kit and pinned-official-kit changes are deliberately out of scope: a release note alone does not demonstrate that a workaround can be removed.
 
+## Context7 conflict: reuse host registration
+
+If `sbx env run` reports `MCP server "context7" is already registered with another definition`,
+the updated `env/common.sbxenv.yaml` no longer declares a duplicate host-global MCP server.
+The launcher instead calls `sbx mcp load context7 --sandbox <name>` after applying the
+environment. This reuses the existing native registration and OAuth credentials; it does
+not remove or register a different Context7 definition.
+
+Run `sbx mcp inspect context7` to confirm the host registration. On a new host
+with no registration, set it up once with `sbx mcp add context7 --url
+https://mcp.context7.com/mcp` and authorize with `sbx mcp auth context7`
+if prompted. Do **not** blindly run `sbx mcp rm context7`: that can affect
+other sandboxes and stored authentication. Native `sbx mcp load` should be checked
+for idempotent behavior with repeated launcher invocations during local validation.
+
 ## macOS preflight — owner-operated
 
 **Run on a trusted host, not inside a project workspace exposed to an untrusted agent.** Back up any existing sandbox-local files or unpushed commits before recreating sandboxes. Existing sandboxes do not automatically receive new kit composition, pins, CA stores or all native lifecycle behavior.
