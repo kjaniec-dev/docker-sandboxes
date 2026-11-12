@@ -12,7 +12,7 @@ case "$profile:$agent" in
   personal:claude|personal:codex|personal:opencode|personal:antigravity|personal:junie|client:claude|client:copilot) ;;
   *) echo "usage: SBX_PROFILE=<personal|client> $0 <agent>" >&2; exit 2 ;;
 esac
-command -v sbx >/dev/null || { echo "smoke: SBX 0.51.0+ is required" >&2; exit 1; }
+command -v sbx >/dev/null || { echo "smoke: SBX 0.53.0+ is required" >&2; exit 1; }
 sbx version --json | python3 "$ROOT/bin/check-sbx-version.py"
 export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
 if [[ "$profile:$agent" == client:claude ]]; then
