@@ -2,9 +2,9 @@
 
 Development environments for Docker Sandboxes and Sandbox Kit **V3**.
 
-The required SBX CLI version is **0.51.0+**, enforced by [the version check](bin/check-sbx-version.py).
+The required SBX CLI version is **0.53.0+**, enforced by [the version check](bin/check-sbx-version.py).
 This security floor includes workspace-copy symlink protection and the published Kits v3 agent transition.
-See the [SBX 0.51.0 upgrade and macOS smoke checklist](docs/upgrade-sbx-0.51.md) before using the updated configuration.
+See the [SBX 0.53.0 upgrade and macOS smoke checklist](docs/upgrade-sbx-0.53.md) before using the updated configuration.
 Installed CLI updates do not refresh existing sandbox trust stores or pinned kit images;
 follow the [CA maintenance guide](docs/ca-maintenance.md).
 
