@@ -1,0 +1,4 @@
+# Optional feature composition; used only with SBX_AUTO_PORTS=1.
+schemaVersion: "1"
+kits:
+  - ../../mixins/auto-ports

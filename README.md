@@ -130,6 +130,23 @@ verification.
 Client Claude uses host-only token resolution and a sandbox-scoped native placeholder; ADC is not
 mounted. The flow applies only to client Claude, not personal agents or client Copilot.
 
+## Optional Docker Sandboxes 0.53 features
+
+SBX 0.53 introduces local disk reports, Claude in Chrome and opt-in auto-assigned
+loopback port publishing. This repository keeps all host/browser grants **off by
+default** and never changes an existing sandbox just to enable the port grant.
+
+```bash
+sbx df                     # native disk accounting; no cleanup
+sbx df --verbose
+SBX_AUTO_PORTS=1 codex-sbx # separate -ports sandbox, opt-in localhost port API
+```
+
+See [SBX 0.53 opt-in features](docs/sbx-0.53-features.md) for the complete port
+publication request, safety constraints, Claude in Chrome setup and verification.
+The browser setting is host-global; use it only with an approved personal Claude
+subscription, not as a Vertex authentication path.
+
 ## Native lifecycle and authentication
 
 SBX owns credentials, sandbox creation, stop/start, removal and kit composition. Configure

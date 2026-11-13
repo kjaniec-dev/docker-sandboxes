@@ -112,7 +112,7 @@ path.write_text(json.dumps(state))
 ''')
         stub.chmod(0o755)
         self.environ = dict(os.environ)
-        for key in ("XDG_CONFIG_HOME", "SBX_SMOKE_KEEP_ON_FAILURE", "SBX_SMOKE_MODEL", "SBX_TEST_SCENARIO", "SBX_TEST_INVENTORY", "SBX_TEST_VERSION"):
+        for key in ("XDG_CONFIG_HOME", "SBX_SMOKE_KEEP_ON_FAILURE", "SBX_SMOKE_MODEL", "SBX_TEST_SCENARIO", "SBX_TEST_INVENTORY", "SBX_TEST_VERSION", "SBX_AUTO_PORTS"):
             self.environ.pop(key, None)
         self.environ.update(
             HOME=str(self.base / "home"),
@@ -136,6 +136,20 @@ path.write_text(json.dumps(state))
 
     def calls(self):
         return [call for call in self.raw_calls() if call != ["version", "--json"]]
+
+    def test_optional_auto_ports_survives_full_lifecycle_and_cleanup(self):
+        result = self.run_smoke(SBX_AUTO_PORTS="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        feature = str(ROOT / "env/features/auto-ports.sbxenv.yaml")
+        for call in self.calls():
+            if call[:2] in (["env", "run"], ["env", "rm"]):
+                self.assertEqual(call.count(feature), 1, call)
+
+    def test_optional_auto_ports_rejects_invalid_value_before_creation(self):
+        result = self.run_smoke(SBX_AUTO_PORTS="yes")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SBX_AUTO_PORTS must be 0 or 1", result.stderr)
+        self.assertFalse(any(call[:2] == ["env", "run"] for call in self.calls()))
 
     def test_fresh_restart_recreation_and_final_cleanup_use_048_contract(self):
         result = self.run_smoke()
