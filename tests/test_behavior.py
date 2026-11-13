@@ -227,6 +227,10 @@ elif args[:1] != ["run"]:
         })
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.operation(["env", "exec"])["argv"].count(feature), 1)
+        self.reset_log()
+        result = self.launch("junie", env={"SBX_AUTO_PORTS": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.operation(["env", "exec"])["argv"].count(feature), 1)
 
     def test_optional_auto_ports_rejects_unrecognized_values(self):
         for value in ("", "true", "yes", "2", "auto"):
