@@ -159,7 +159,7 @@ common_env="$ROOT/env/common.sbxenv.yaml"
 
 # A separate sandbox identity keeps the opt-in capability out of existing VMs.
 files=("$agent_env" "$common_env")
-case "${SBX_AUTO_PORTS:-0}" in
+case "${SBX_AUTO_PORTS-0}" in
   0) ;;
   1)
     files+=("$ROOT/env/features/auto-ports.sbxenv.yaml")

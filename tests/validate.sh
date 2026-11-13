@@ -46,4 +46,4 @@ echo "validate: plan personal/codex + opt-in ephemeral ports"
 sbx env plan "$ROOT/env/personal/codex.sbxenv.yaml" "$ROOT/env/common.sbxenv.yaml" \
   "$ROOT/env/features/auto-ports.sbxenv.yaml" --name "validate-personal-codex-ports" \
   --env-arg "workspace=$tmp" >/dev/null
-echo "validate: PASS native kits and seven environment plans"
+echo "validate: PASS native kits, seven standard environment plans and opt-in port plan"

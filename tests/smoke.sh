@@ -19,17 +19,19 @@ if [[ "$profile:$agent" == client:claude ]]; then
   : "${ANTHROPIC_VERTEX_PROJECT_ID:?Set ANTHROPIC_VERTEX_PROJECT_ID}"
   : "${CLOUD_ML_REGION:?Set CLOUD_ML_REGION}"
 fi
+case "${SBX_AUTO_PORTS-0}" in
+  0|1) ;;
+  *) echo "smoke: SBX_AUTO_PORTS must be 0 or 1" >&2; exit 2 ;;
+esac
 repo="$(mktemp -d)"
 repo="$(cd "$repo" && pwd -P)"
 name="smoke-$profile-$agent-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:10])')"
 logs="${SBX_SMOKE_LOG_DIR:-$(mktemp -d)}"
 mkdir -p "$logs"
 files=("$ROOT/env/$profile/$agent.sbxenv.yaml" "$ROOT/env/common.sbxenv.yaml")
-case "${SBX_AUTO_PORTS:-0}" in
-  0) ;;
-  1) files+=("$ROOT/env/features/auto-ports.sbxenv.yaml") ;;
-  *) echo "smoke: SBX_AUTO_PORTS must be 0 or 1" >&2; exit 2 ;;
-esac
+if [[ "${SBX_AUTO_PORTS-0}" == 1 ]]; then
+  files+=("$ROOT/env/features/auto-ports.sbxenv.yaml")
+fi
 [[ ! -f "$config_root/$profile.sbxenv.yaml" ]] || files+=("$config_root/$profile.sbxenv.yaml")
 args=(--name "$name" --env-arg "workspace=$repo")
 if [[ "$profile:$agent" == client:claude ]]; then
