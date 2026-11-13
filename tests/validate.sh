@@ -20,7 +20,7 @@ fi
 command -v sbx >/dev/null || { echo "validate: SBX 0.53.0+ is required" >&2; exit 1; }
 export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
 sbx version --json | python3 "$ROOT/bin/check-sbx-version.py"
-for kit in workloads/claude-dev workloads/opencode-dev workloads/junie-dev mixins/dev mixins/vertex; do
+for kit in workloads/claude-dev workloads/opencode-dev workloads/junie-dev mixins/dev mixins/vertex mixins/auto-ports; do
   echo "validate: build/inspect $kit"
   sbx kit inspect "$ROOT/$kit" --json >/dev/null
 done
@@ -42,4 +42,8 @@ plan personal claude
 plan personal opencode
 plan client copilot
 plan client claude --env-arg vertexProject=validation-project --env-arg vertexRegion=us-east5
-echo "validate: PASS native kits and seven environment plans"
+echo "validate: plan personal/codex + opt-in ephemeral ports"
+sbx env plan "$ROOT/env/personal/codex.sbxenv.yaml" "$ROOT/env/common.sbxenv.yaml" \
+  "$ROOT/env/features/auto-ports.sbxenv.yaml" --name "validate-personal-codex-ports" \
+  --env-arg "workspace=$tmp" >/dev/null
+echo "validate: PASS native kits, seven standard environment plans and opt-in port plan"

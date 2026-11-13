@@ -100,7 +100,7 @@ elif args[:1] != ["run"]:
 ''')
         stub.chmod(0o755)
         self.environ = dict(os.environ)
-        for key in ("SBX_PROFILE", "XDG_CONFIG_HOME", "SBX_KIT_BUILDER", "JUNIE_API_KEY", "ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION"):
+        for key in ("SBX_PROFILE", "XDG_CONFIG_HOME", "SBX_KIT_BUILDER", "SBX_AUTO_PORTS", "JUNIE_API_KEY", "ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION"):
             self.environ.pop(key, None)
         self.environ.update(HOME=str(self.home), PATH=str(self.tools) + os.pathsep + os.environ["PATH"],
                             SBX_TEST_LOG=str(self.log), SBX_GIT_AUDIT="strict")
@@ -202,6 +202,44 @@ elif args[:1] != ["run"]:
                         self.assertEqual(self.operation(["env", "run"])["argv"][2], str(ROOT / f"env/{profile}/{agent}.sbxenv.yaml"))
                     else:
                         self.assert_no_launch(result)
+
+    def test_optional_auto_ports_is_isolated_and_forwarded_to_native_env(self):
+        feature = str(ROOT / "env/features/auto-ports.sbxenv.yaml")
+        self.assertEqual(self.launch().returncode, 0)
+        standard = self.operation(["env", "run"])["argv"]
+        default_name = standard[standard.index("--name") + 1]
+        self.assertNotIn(feature, standard)
+        self.reset_log()
+        result = self.launch(env={"SBX_AUTO_PORTS": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        provision = self.operation(["env", "run"])["argv"]
+        feature_name = provision[provision.index("--name") + 1]
+        self.assertEqual(feature_name, default_name + "-ports")
+        self.assertEqual(provision.count(feature), 1)
+        self.assertEqual(provision.index(feature), provision.index(str(ROOT / "env/common.sbxenv.yaml")) + 1)
+        self.assertEqual(self.operation(["mcp", "load", "context7"])["argv"][-1], feature_name)
+        self.assertEqual(self.operation(["run"])["argv"], ["run", "--name", feature_name])
+        # Client Claude and Junie use env exec; the grant must remain in their composition.
+        self.reset_log()
+        result = self.launch("claude", env={
+            "SBX_PROFILE": "client", "SBX_AUTO_PORTS": "1",
+            "ANTHROPIC_VERTEX_PROJECT_ID": "test-project", "CLOUD_ML_REGION": "eu",
+        })
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.operation(["env", "exec"])["argv"].count(feature), 1)
+        self.reset_log()
+        result = self.launch("junie", env={"SBX_AUTO_PORTS": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.operation(["env", "exec"])["argv"].count(feature), 1)
+
+    def test_optional_auto_ports_rejects_unrecognized_values(self):
+        for value in ("", "true", "yes", "2", "auto"):
+            with self.subTest(value=value):
+                self.reset_log()
+                result = self.launch(env={"SBX_AUTO_PORTS": value})
+                self.assert_no_launch(result)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("SBX_AUTO_PORTS must be 0 or 1", result.stderr)
 
     def test_name_is_valid_deterministic_and_same_on_attach(self):
         self.assertEqual(self.launch().returncode, 0)

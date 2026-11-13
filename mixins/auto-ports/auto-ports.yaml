@@ -1,0 +1,13 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+displayName: Ephemeral localhost development ports
+kind: mixin
+version: "1.0.0"
+description: >-
+  Opt-in SBX 0.53 API grant for automatic ephemeral localhost port publication.
+  No static host port is approved by this capability.
+capabilities:
+  - type: com.docker.sandbox/api@1
+    config:
+      operation: ports.publish
+      approval: none

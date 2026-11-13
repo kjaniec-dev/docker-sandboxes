@@ -157,7 +157,16 @@ agent_env="$ROOT/env/$profile/$agent.sbxenv.yaml"
 common_env="$ROOT/env/common.sbxenv.yaml"
 [[ -f "$agent_env" ]] || { echo "sbx-dev: missing environment: $agent_env" >&2; exit 2; }
 
+# A separate sandbox identity keeps the opt-in capability out of existing VMs.
 files=("$agent_env" "$common_env")
+case "${SBX_AUTO_PORTS-0}" in
+  0) ;;
+  1)
+    files+=("$ROOT/env/features/auto-ports.sbxenv.yaml")
+    name="${name}-ports"
+    ;;
+  *) echo "sbx-dev: SBX_AUTO_PORTS must be 0 or 1" >&2; exit 2 ;;
+esac
 local_overlay="$config_root/$profile.sbxenv.yaml"
 [[ -f "$local_overlay" ]] && files+=("$local_overlay")
 

@@ -1,10 +1,11 @@
 # Repository instructions
 
-This repository targets Docker Sandboxes 0.51.0+ and Sandbox Kit V3 only.
+This repository targets Docker Sandboxes 0.53.0+ and Sandbox Kit V3 only.
 
 Architecture rules:
 
 - Prefer native SBX capabilities over custom scripts.
+- Keep optional host-access and port-publication grants off by default; do not widen the shared dev mixin.
 - Keep reusable skills in the native `sbx skills` store.
 - Keep remote/host MCP servers in the native SBX MCP gateway.
 - Keep Serena sandbox-local; never run it as a host `sbx mcp --command` server.
