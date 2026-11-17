@@ -5,7 +5,7 @@ import re
 import sys
 
 
-FLOOR = (0, 53, 0)
+FLOOR = (0, 54, 0)
 REQUIRED = "sbx-dev: Docker Sandboxes {}.{}.{}+ is required".format(*FLOOR)
 
 try:
