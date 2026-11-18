@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Read-only Docker Sandboxes inventory and diagnostics (no token accounting)."""
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+
+
+def run(*args):
+    try:
+        p = subprocess.run(["sbx", *args], text=True, capture_output=True, timeout=25, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"status": "unavailable", "reason": type(exc).__name__}
+    if p.returncode:
+        return {"status": "error", "exit_code": p.returncode}
+    try:
+        return {"status": "ok", "data": json.loads(p.stdout)}
+    except json.JSONDecodeError:
+        return {"status": "unsupported_output"}
+
+
+def summarize(value):
+    """Avoid printing arbitrary CLI fields which may contain host paths or secrets."""
+    if value["status"] != "ok":
+        return value
+    data = value["data"]
+    if isinstance(data, list):
+        return {"status": "ok", "count": len(data)}
+    if isinstance(data, dict):
+        for key in ("sandboxes", "checks", "servers", "items"):
+            if isinstance(data.get(key), list):
+                return {"status": "ok", "count": len(data[key])}
+        return {"status": "ok", "available": True}
+    return {"status": "ok", "available": True}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Read-only SBX status; no context/token metrics")
+    parser.add_argument("--json", action="store_true", help="machine-readable summary")
+    args = parser.parse_args()
+    if not shutil.which("sbx"):
+        print("sbx CLI not found", file=sys.stderr)
+        return 1
+
+    results = {
+        "version": run("version", "--json"),
+        "sandboxes": summarize(run("ls", "--json")),
+        "disk": summarize(run("df", "--format", "json")),
+        "mcp": summarize(run("mcp", "ls", "--format", "json")),
+        "diagnostics": summarize(run("diagnose", "--format", "json")),
+        "context_usage": {"status": "not_available", "reason": "No supported cross-agent token/context API"},
+    }
+    # Version JSON is intentionally not printed verbatim: it can contain
+    # additional upstream fields. Extract only the documented client version.
+    version = results["version"]
+    if version["status"] == "ok":
+        client = version["data"].get("client", {}) if isinstance(version["data"], dict) else {}
+        results["version"] = {"status": "ok", "client": client.get("version", "unknown")}
+    if args.json:
+        print(json.dumps(results, indent=2, sort_keys=True))
+    else:
+        for name, result in results.items():
+            print(f"{name}: {json.dumps(result, sort_keys=True)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
