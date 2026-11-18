@@ -83,6 +83,25 @@ def main():
         "junie": (".junie/mcp/mcp.json", "mcpServers", {"command": command[0], "args": command[1:]}),
         "copilot": (".copilot/mcp-config.json", "mcpServers", {"type": "stdio", "command": command[0], "args": command[1:], "tools": ["*"]}),
     }
+    if agent == "claude":
+        # Only set a default; preserve any existing user statusline configuration.
+        settings_path = home / ".claude" / "settings.json"
+        settings = load_json(settings_path)
+        if "statusLine" not in settings:
+            settings["statusLine"] = {
+                "type": "command",
+                "command": "python3 /opt/sbx-dev/claude-statusline.py",
+            }
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary = tempfile.mkstemp(prefix=".settings.json.", dir=settings_path.parent)
+            try:
+                with os.fdopen(fd, "w") as stream:
+                    json.dump(settings, stream, indent=2)
+                    stream.write("\\n")
+                os.replace(temporary, settings_path)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
     if agent not in formats:
         raise SystemExit(f"sbx-dev: unsupported SBX_AGENT_KIND: {agent!r}")
     relative, key, server = formats[agent]
