@@ -97,7 +97,7 @@ def main():
             try:
                 with os.fdopen(fd, "w") as stream:
                     json.dump(settings, stream, indent=2)
-                    stream.write("\\n")
+                    stream.write("\n")
                 os.replace(temporary, settings_path)
             finally:
                 if os.path.exists(temporary):
