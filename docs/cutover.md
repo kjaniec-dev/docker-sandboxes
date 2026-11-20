@@ -1,8 +1,24 @@
 # V3 cutover evidence
 
+## Official kit refresh, 2026-11-20
+
+Docker Hub's published V3 artifacts were checked by immutable digest. Claude
+2.1.329 remains current; Codex 0.171.0, OpenCode 2.3.2 and Copilot 1.0.114
+replace older pins. Junie remains 26.9.21, with the digest of its rebuilt
+artifact updated. The official Antigravity 1.5.13 candidate was not adopted:
+its fresh-sandbox smoke failed because the native shared agent context was
+missing, and its descriptor no longer declares the prior network, credential
+and gateway configuration. The earlier 1.0.0 digest is retained.
+
+Personal Claude, Codex, OpenCode, Junie and Antigravity, and client Copilot
+passed fresh, restart and recreation infrastructure smoke on SBX 0.54.0;
+authenticated model requests were not checked. Existing sandboxes need
+recreation to use changed kits. The shared tooling now supplies fallback
+Node, npm, Go and Python only where the workload does not supply them.
+
 ## Official kit refresh, 2026-11-07
 
-Docker Hub's official V3 kit tags were checked for all six agents. The selected
+Docker Hub's official V3 kit tags were checked for all six agents. The then-selected
 immutable artifacts are Claude 2.1.314, Codex 0.166.0, OpenCode 1.19.5,
 Antigravity workload 1.0.0, Junie workload 26.9.21 and Copilot workload 1.0.86.
 The Codex `latest` tag lagged its newest numbered release. The old Docker

@@ -82,6 +82,18 @@ capabilities:
             if ! uvx --version >/dev/null 2>&1; then
               ln -sfn /opt/sbx-dev/bin/uvx /usr/local/bin/uvx
             fi
+            if ! command -v node >/dev/null 2>&1; then
+              ln -sfn /opt/sbx-dev/node/bin/node /usr/local/bin/node
+            fi
+            if ! command -v npm >/dev/null 2>&1; then
+              ln -sfn /opt/sbx-dev/node/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
+            fi
+            if ! command -v go >/dev/null 2>&1; then
+              ln -sfn /opt/sbx-dev/go/bin/go /usr/local/bin/go
+            fi
+            if ! command -v python3 >/dev/null 2>&1; then
+              ln -sfn /opt/sbx-dev/serena/bin/python /usr/local/bin/python3
+            fi
             if [ -f /usr/local/share/ca-certificates/proxy-ca.crt ]; then
               /opt/sbx-dev/java/bin/keytool -list -alias sbx-proxy -keystore /opt/sbx-dev/java/lib/security/cacerts -storepass changeit >/dev/null 2>&1 ||
               /opt/sbx-dev/java/bin/keytool -importcert -noprompt -alias sbx-proxy -file /usr/local/share/ca-certificates/proxy-ca.crt -keystore /opt/sbx-dev/java/lib/security/cacerts -storepass changeit

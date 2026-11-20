@@ -5,7 +5,7 @@ args:
     default: /home/agent/.gemini/config/skills
 
 kits:
-  # Official sbx workload 1.0.0, resolved 2026-11-07.
+  # Retain 1.0.0: 1.5.13 lacks native context and its smoke test fails.
   - docker.io/sbx/antigravity@sha256:f075d6eab2d05c066ce08a7b6b240f673878bc095d51e1883d11c48d5024b445
 
 env:
