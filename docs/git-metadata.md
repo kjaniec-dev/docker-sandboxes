@@ -64,10 +64,14 @@ It inspects main, worktree and submodule metadata, rejects metadata symlinks out
 mode's hooks exception, checks administrative routing paths and detects replacement of the main
 `.git` directory. Strict mode rejects non-sample hook files regardless of executable mode.
 Real hook subdirectories can store disabled hooks; strict mode still checks their contents for symlinks.
-Linked worktrees outside the main checkout remain supported when launching from the main
-checkout. Their administrative `gitdir` files are backpointers and are never followed to external
-files. Local `config.worktree` files are still audited; forward routing escapes are rejected,
-and stale or empty `commondir` targets receive an explicit diagnostic.
+Launchers accept a linked worktree under the main checkout's `.worktrees/`, including its
+subdirectories. They mount the main checkout and start the agent in the selected worktree;
+all such sessions use the main checkout's sandbox. Linked worktrees outside the main checkout
+remain supported when launching from the main checkout. Local `config.worktree` files are
+still audited. If an external worktree records `core.worktree`, the audit verifies that its
+external `.git` file and administrative backpointer refer to each other before accepting it.
+Other forward routing escapes are rejected, and stale or empty `commondir` targets receive an
+explicit diagnostic.
 Discovery and the audited directory identity come from one `--discover-identity` invocation,
 which emits a JSON array containing the repository root and metadata identity.
 It never invokes repository hooks, filters or fsmonitor to inspect those files. Diagnostics identify

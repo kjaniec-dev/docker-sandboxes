@@ -297,13 +297,71 @@ elif args[:1] != ["run"]:
         (self.repo / ".worktrees").symlink_to(outside, target_is_directory=True)
         self.assert_no_launch(self.launch())
 
-    def test_linked_worktree_with_git_metadata_outside_mount_is_rejected(self):
+    def test_linked_worktree_uses_main_mount_and_worktree_directory(self):
         self.git("add", ".gitignore")
         self.git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
         linked = self.repo / ".worktrees/topic"
         self.git("worktree", "add", "-qb", "topic", str(linked))
+        result = self.launch(cwd=linked)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("workspace=" + str(self.repo), self.operation(["env", "run"])["argv"])
+        self.assertIn(str(linked), self.operation(["run"])["argv"])
+        self.assertIn("--workdir", self.operation(["run"])["argv"])
+
+    def test_linked_worktree_outside_main_workspace_is_rejected(self):
+        self.git("add", ".gitignore")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+        linked = self.base / "external-worktree"
+        self.git("worktree", "add", "-qb", "external", str(linked))
         self.assert_no_launch(self.launch(cwd=linked))
-        self.assertIn("worktree", self.launch(cwd=linked).stderr.lower())
+
+    def test_linked_worktree_cannot_claim_another_registry_entry(self):
+        self.git("add", ".gitignore")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+        first = self.repo / ".worktrees/first"
+        second = self.repo / ".worktrees/second"
+        self.git("worktree", "add", "-qb", "first", str(first))
+        self.git("worktree", "add", "-qb", "second", str(second))
+        (first / ".git").write_text((second / ".git").read_text())
+        result = self.launch(cwd=first)
+        self.assert_no_launch(result)
+        self.assertIn("backpointer does not match", result.stderr)
+
+    def test_linked_worktree_subdirectory_routes_agent_sessions(self):
+        self.git("add", ".gitignore")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+        linked = self.repo / ".worktrees/group/review with spaces"
+        linked.parent.mkdir(parents=True)
+        self.git("worktree", "add", "-qb", "review", str(linked))
+        nested = linked / "nested"
+        nested.mkdir()
+        for agent, env, operation in (("claude", {}, ["run"]),
+                                      ("codex", {}, ["run"]),
+                                      ("junie", {}, ["env", "exec"]),
+                                      ("claude", {"SBX_PROFILE": "client", "ANTHROPIC_VERTEX_PROJECT_ID": "project",
+                                                  "CLOUD_ML_REGION": "eu"}, ["env", "exec"])):
+            with self.subTest(agent=agent, env=env):
+                self.reset_log()
+                result = self.launch(agent, cwd=nested, env=env)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                argv = self.operation(operation)["argv"]
+                self.assertEqual(argv[argv.index("--workdir") + 1], str(linked))
+                self.assertIn("workspace=" + str(self.repo), self.operation(["env", "run"])["argv"])
+
+    def test_many_linked_worktrees_share_one_sandbox(self):
+        self.git("add", ".gitignore")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+        for number in range(50):
+            self.git("worktree", "add", "-qb", f"topic-{number}", str(self.repo / f".worktrees/topic-{number}"))
+        first = self.launch(cwd=self.repo / ".worktrees/topic-0")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        first_name = self.operation(["env", "run"])["argv"]
+        self.reset_log()
+        last = self.launch(cwd=self.repo / ".worktrees/topic-49")
+        self.assertEqual(last.returncode, 0, last.stderr)
+        last_name = self.operation(["env", "run"])["argv"]
+        self.assertEqual(first_name[first_name.index("--name") + 1], last_name[last_name.index("--name") + 1])
+        self.assertIn(str(self.repo / ".worktrees/topic-49"), self.operation(["run"])["argv"])
 
     def test_symlinked_public_launcher_in_path_with_spaces(self):
         links = self.base / "links with spaces"

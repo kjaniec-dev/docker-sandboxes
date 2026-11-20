@@ -82,11 +82,12 @@ sbx version --json | python3 "$ROOT/bin/check-sbx-version.py"
 export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
 
 echo "sbx-dev: checking Git metadata before launch…" >&2
-repo_metadata="$(python3 "$ROOT/bin/audit-git.py" "$git_audit_policy" --discover-identity)"
+repo_metadata="$(python3 "$ROOT/bin/audit-git.py" "$git_audit_policy" --discover-launch)"
 {
   IFS= read -r -d '' repo_root
   IFS= read -r -d '' repo_metadata_identity
-} < <(python3 -c 'import json,sys; root,identity=json.loads(sys.argv[1]); sys.stdout.write(root+"\0"+identity+"\0")' "$repo_metadata")
+  IFS= read -r -d '' agent_workdir
+} < <(python3 -c 'import json,sys; root,identity,workdir=json.loads(sys.argv[1]); sys.stdout.write(root+"\0"+identity+"\0"+workdir+"\0")' "$repo_metadata")
 # Keep this shell alive so failed provisioning, agent exits and catchable signals
 # all pass through the same post-session check. This detects unsafe metadata;
 # writable .git remains shared with the host (see docs/git-metadata.md).
@@ -205,15 +206,18 @@ if [[ "$agent" == junie ]]; then
   # its public placeholder; native env exec also applies updated JVM settings.
   placeholder="$(python3 "$ROOT/workloads/junie-dev/token-placeholder.py" "$name")"
   exec_args=(env exec --name "$name" "${args[@]}" --env "JUNIE_API_KEY=$placeholder")
+  [[ "$agent_workdir" == "$repo_root" ]] || exec_args+=(--workdir "$agent_workdir")
   [[ ! -t 0 || ! -t 1 ]] || exec_args+=(-it)
   run_sbx "${exec_args[@]}" "${files[@]}" -- junie "$@"
 elif [[ "$profile:$agent" == client:claude ]]; then
   placeholder="$(python3 "$ROOT/workloads/claude-dev/token-placeholder.py" "$name" "$CLOUD_ML_REGION")"
   exec_args=(env exec --name "$name" "${args[@]}" --env "ANTHROPIC_AUTH_TOKEN=$placeholder")
+  [[ "$agent_workdir" == "$repo_root" ]] || exec_args+=(--workdir "$agent_workdir")
   [[ ! -t 0 || ! -t 1 ]] || exec_args+=(-it)
   run_sbx "${exec_args[@]}" "${files[@]}" -- claude --dangerously-skip-permissions "$@"
 else
   run_args=(run --name "$name")
+  [[ "$agent_workdir" == "$repo_root" ]] || run_args+=(--workdir "$agent_workdir")
   if (($# > 0)); then
     run_sbx "${run_args[@]}" -- "$@"
   else

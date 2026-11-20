@@ -166,6 +166,17 @@ class GitAuditTests(unittest.TestCase):
         (admin / "config.worktree").write_text("[core]\n fsmonitor = attack\n")
         self.assert_rejected(self.audit(), "core.fsmonitor")
 
+    def test_registered_external_worktree_config_can_point_to_its_checkout(self):
+        worktree, admin = self.add_external_worktree()
+        (admin / "config.worktree").write_text(f"[core]\n worktree = {worktree}\n")
+        result = self.audit()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_external_worktree_config_cannot_redirect_to_another_directory(self):
+        _, admin = self.add_external_worktree()
+        (admin / "config.worktree").write_text(f"[core]\n worktree = {self.base}\n")
+        self.assert_rejected(self.audit(), "core.worktree escapes")
+
     def test_backpointer_target_is_never_audited(self):
         worktree, _ = self.add_external_worktree()
         (worktree / ".git").write_text("untrusted backpointer target contents\n")

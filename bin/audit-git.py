@@ -108,7 +108,32 @@ def audit_config(path, root, allow_integrations=False):
             target = Path(value)
             target = target if target.is_absolute() else path.parent / target
             if not target.resolve().is_relative_to(root):
-                raise UnsafeMetadata(f"{path}: core.worktree escapes the workspace")
+                # An inactive external linked worktree may legitimately record
+                # its checkout path here. Verify both directions without
+                # mounting or executing anything from the external checkout.
+                admin = path.parent
+                registry = root / ".git/worktrees"
+                valid = False
+                if path.name == "config.worktree" and admin.parent == registry:
+                    backlink = admin / "gitdir"
+                    try:
+                        regular(backlink)
+                        linked_marker = Path(backlink.read_text().strip())
+                        if not linked_marker.is_absolute():
+                            linked_marker = admin / linked_marker
+                        regular(linked_marker)
+                        linked_text = linked_marker.read_text()
+                        if linked_text.startswith("gitdir: "):
+                            linked_admin = Path(linked_text[len("gitdir: "):].removesuffix("\n"))
+                            if not linked_admin.is_absolute():
+                                linked_admin = linked_marker.parent / linked_admin
+                            valid = (linked_marker.name == ".git" and
+                                     linked_marker.parent.resolve() == target.resolve() and
+                                     linked_admin.resolve() == admin.resolve())
+                    except OSError:
+                        pass
+                if not valid:
+                    raise UnsafeMetadata(f"{path}: core.worktree escapes the workspace")
 
 
 def audit_worktrees(root, allow_integrations=False):
@@ -275,14 +300,40 @@ def quarantine(root):
         raise UnsafeMetadata("Git metadata quarantine incomplete: " + "; ".join(errors))
 
 
-def discover():
+def discover(allow_linked=False):
     for path in (Path.cwd(), *Path.cwd().parents):
         if any(path.glob(".git.sbx-quarantine-*")):
             raise UnsafeMetadata(f"{path}: {QUARANTINE_RECOVERY}")
         if (path / ".git").exists() or (path / ".git").is_symlink():
-            if not (path / ".git").is_dir():
+            marker = path / ".git"
+            if marker.is_symlink():
+                raise UnsafeMetadata(f"{marker}: metadata symlink")
+            if marker.is_dir():
+                return path, path
+            if not allow_linked:
                 raise UnsafeMetadata("linked worktree: launch from the main Git checkout")
-            return path
+            regular(marker)
+            text = marker.read_text()
+            if not text.startswith("gitdir: ") or "\n" in text.strip():
+                raise UnsafeMetadata(f"{marker}: malformed worktree link")
+            target = Path(text[len("gitdir: "):].strip())
+            target = target if target.is_absolute() else path / target
+            regular(target, directory=True)
+            target = target.resolve()
+            if target.parent.name != "worktrees" or target.parent.parent.name != ".git":
+                raise UnsafeMetadata(f"{marker}: worktree link does not point into a main Git registry")
+            root = target.parent.parent.parent
+            regular(root / ".git", directory=True)
+            if not path.resolve().is_relative_to((root / ".worktrees").resolve()):
+                raise UnsafeMetadata("linked worktree must be inside the main checkout's .worktrees directory")
+            backpointer = target / "gitdir"
+            regular(backpointer)
+            backlink = Path(backpointer.read_text().strip())
+            if not backlink.is_absolute():
+                backlink = target / backlink
+            if backlink.resolve() != marker.resolve():
+                raise UnsafeMetadata(f"{marker}: worktree registry backpointer does not match")
+            return root, path
     raise UnsafeMetadata("run from inside a Git repository")
 
 
@@ -293,7 +344,7 @@ def main():
         if args[:1] in (["--allow-integrations"], ["--strict"]):
             args = args[1:]
         if len(args) not in {1, 2}:
-            raise UnsafeMetadata("usage: audit-git.py [--allow-integrations|--strict] <--discover|--discover-identity|--identity root|--quarantine root|root [identity]>")
+            raise UnsafeMetadata("usage: audit-git.py [--allow-integrations|--strict] <--discover|--discover-identity|--discover-launch|--identity root|--quarantine root|root [identity]>")
         if any(os.environ.get(key) for key in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")):
             raise UnsafeMetadata("unset Git repository-routing environment variables before launching")
         if args[0] == "--quarantine" and len(args) == 2:
@@ -305,13 +356,15 @@ def main():
                 raise UnsafeMetadata("--identity requires a repository root")
             print(audit(Path(args[1]), allow_integrations=allow_integrations))
             return 0
-        discovering = args[0] in {"--discover", "--discover-identity"}
+        discovering = args[0] in {"--discover", "--discover-identity", "--discover-launch"}
         if discovering and len(args) != 1:
             raise UnsafeMetadata(f"{args[0]} does not accept arguments")
-        root = discover() if discovering else Path(args[0])
+        root, workdir = discover(allow_linked=args[0] == "--discover-launch") if discovering else (Path(args[0]), None)
         identity = audit(root, args[1] if len(args) == 2 else None,
                          allow_integrations=allow_integrations)
-        if args[0] == "--discover-identity":
+        if args[0] == "--discover-launch":
+            print(json.dumps([str(root), identity, str(workdir)]))
+        elif args[0] == "--discover-identity":
             print(json.dumps([str(root), identity]))
         elif args[0] == "--discover":
             print(root)
