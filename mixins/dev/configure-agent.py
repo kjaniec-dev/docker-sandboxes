@@ -87,7 +87,9 @@ def main():
         # Only set a default; preserve any existing user statusline configuration.
         settings_path = home / ".claude" / "settings.json"
         settings = load_json(settings_path)
-        if "statusLine" not in settings:
+        existing_status = settings.get("statusLine")
+        narwhal_status = {"type": "command", "command": "/usr/local/bin/sbx-claude-hook claude-status"}
+        if "statusLine" not in settings or existing_status == narwhal_status:
             settings["statusLine"] = {
                 "type": "command",
                 "command": "python3 /opt/sbx-dev/claude-statusline.py",

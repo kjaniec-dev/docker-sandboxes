@@ -324,6 +324,23 @@ if(await page.textContent('h1') !== 'SBX Chromium') throw Error('Browser DOM che
 } finally { await browser.close(); } })().catch(e=>{console.error(e);process.exit(1)});
 """, browser], env={**os.environ, "LD_LIBRARY_PATH": "/opt/sbx-dev/lib", "FONTCONFIG_FILE": "/opt/sbx-dev/fonts.conf"})
     home = Path.home()
+    if agent == "claude":
+        settings = json.loads((home / '.claude/settings.json').read_text())
+        status = settings.get('statusLine', {})
+        check(status.get('command') == 'python3 /opt/sbx-dev/claude-statusline.py',
+              'Claude status line is not configured')
+        rendered = subprocess.run(['python3', '/opt/sbx-dev/claude-statusline.py'],
+            input=json.dumps({'model': {'display_name': 'Smoke'}, 'context_window': {
+                'used_percentage': 20, 'context_window_size': 200000,
+                'current_usage': {'input_tokens': 1000, 'cache_creation_input_tokens': 2000,
+                                  'cache_read_input_tokens': 37000}}}),
+            text=True, capture_output=True, check=True).stdout
+        check('Smoke | context 40,000/200,000 tokens | 20%' in rendered, 'Claude status rendering failed')
+    elif agent == 'codex':
+        settings = tomllib.loads((home / '.codex/config.toml').read_text())
+        check(settings.get('tui', {}).get('status_line') ==
+              ['model-with-reasoning', 'context-used', 'used-tokens', 'context-window-size'],
+              'Codex status line is not configured')
     if agent == "antigravity":
         for directory in (home / ".gemini", home / ".gemini/config"):
             check(directory.stat().st_uid == os.getuid(), f"Antigravity config ancestor not agent-owned: {directory}")

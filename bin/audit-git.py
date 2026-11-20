@@ -125,11 +125,16 @@ def audit_worktrees(root, allow_integrations=False):
     pending = [(base, root, False)]
     while pending:
         directory, owner, inside_repository = pending.pop()
-        for path in sorted(directory.iterdir()):
-            mode = path.lstat().st_mode
-            if path.name.startswith(".git.sbx-quarantine-"):
+        # scandir uses the directory entry type where available, avoiding an
+        # lstat for every file in large Unity worktrees while retaining the
+        # same full traversal and no-follow policy.
+        with os.scandir(directory) as entries:
+            children = sorted(entries, key=lambda entry: entry.name)
+        for entry in children:
+            path = Path(entry.path)
+            if entry.name.startswith(".git.sbx-quarantine-"):
                 raise UnsafeMetadata(f"{path}: {QUARANTINE_RECOVERY}")
-            if stat.S_ISLNK(mode):
+            if entry.is_symlink():
                 if inside_repository:
                     # Source symlinks are ordinary checkout content; never follow them.
                     continue
@@ -139,7 +144,7 @@ def audit_worktrees(root, allow_integrations=False):
                     # This repository's metadata was audited before entering its sources.
                     continue
                 raise UnsafeMetadata(f"{path}: .git directly under a non-worktree directory")
-            if not stat.S_ISDIR(mode):
+            if not entry.is_dir(follow_symlinks=False):
                 continue
             marker = path / ".git"
             if os.path.lexists(marker):
