@@ -69,6 +69,10 @@ capabilities:
             if [ "$SBX_AGENT_KIND" = antigravity ]; then
               chown agent:agent /home/agent/.gemini /home/agent/.gemini/config
             fi
+            if [ "$SBX_AGENT_KIND" = claude ]; then
+              mkdir -p /home/agent/.claude
+              chown agent:agent /home/agent/.claude
+            fi
             case "$SBX_AGENT_KIND" in
               antigravity|opencode) ln -sfn /opt/sbx-dev/bin/jq /usr/local/bin/jq ;;
             esac

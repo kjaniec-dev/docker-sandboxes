@@ -140,7 +140,7 @@ elif args[:1] != ["run"]:
                 self.assertEqual(self.calls()[0]["argv"], ["version", "--json"])
 
     def test_old_malformed_and_floor_prerelease_versions_are_rejected(self):
-        for version in ("v0.48.0", "v0.49.1", "v0.49.2", "v0.49.9", "v0.50.0", "v0.50.1", "v0.51.0", "v0.53.0", "v0.54.0-rc4", "v0.51.0-rc.1", "v0.50.0-rc.1", "v0.50", "v0.050.0", ""):
+        for version in ("v0.48.0", "v0.49.1", "v0.49.2", "v0.49.9", "v0.50.0", "v0.50.1", "v0.51.0", "v0.53.0", "v0.53.1", "v0.54.0-rc4", "v0.51.0-rc.1", "v0.50.0-rc.1", "v0.50", "v0.050.0", ""):
             with self.subTest(version=version):
                 self.reset_log()
                 self.assert_no_launch(self.launch(env={"SBX_TEST_VERSION": json.dumps({
