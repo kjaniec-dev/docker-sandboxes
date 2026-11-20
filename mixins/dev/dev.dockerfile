@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build dependencies only; each workload retains its own Node and Go runtimes.
 FROM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS node
-FROM golang:1.26-trixie@sha256:cff05dd6b81c901f2e8249eb6f91c69a60451d0f12c26bfef08e476a85b32d4d AS go
+FROM golang:1.27-trixie@sha256:f18c3d73a184fb0582828510722e723b63a93f7188d11dd223d9be6f6880e65d AS go
 FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS tools
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -39,7 +39,7 @@ RUN mkdir -p /opt/sbx-dev/bin /opt/sbx-dev/java /opt/sbx-dev/maven \
 RUN npm install -g pnpm@10.34.9 corepack@0.36.0 @playwright/cli@0.1.25 \
  && node /opt/sbx-dev/npm/lib/node_modules/@playwright/cli/node_modules/playwright/cli.js install chromium \
  && npm cache clean --force
-# Pinned to versions that build with the golang:1.26 base; @latest pulls Go 1.27 toolchains and exhausts builder disk.
+# Pin Go tools to known versions and use the selected base toolchain without auto-downloading another.
 RUN export GOBIN=/opt/sbx-dev/bin CGO_ENABLED=0 GOTOOLCHAIN=local \
  && go install golang.org/x/tools/gopls@v0.23.0 \
  && go clean -cache \
