@@ -81,6 +81,7 @@ command -v sbx >/dev/null 2>&1 || {
 sbx version --json | python3 "$ROOT/bin/check-sbx-version.py"
 export SBX_KIT_BUILDER="${SBX_KIT_BUILDER-sandbox}"
 
+echo "sbx-dev: checking Git metadata before launch…" >&2
 repo_metadata="$(python3 "$ROOT/bin/audit-git.py" "$git_audit_policy" --discover-identity)"
 {
   IFS= read -r -d '' repo_root
@@ -94,6 +95,7 @@ session_started=false
 audit_on_exit() {
   local status=$? audit_status=0 quarantined
   trap - EXIT
+  echo "sbx-dev: checking Git metadata after session…" >&2
   python3 "$ROOT/bin/audit-git.py" "$git_audit_policy" "$repo_root" "$repo_metadata_identity" || audit_status=$?
   if [[ "$audit_status" != 0 && "$session_started" == true ]]; then
     # A Git-aware prompt would run planted commands before the warning is read:

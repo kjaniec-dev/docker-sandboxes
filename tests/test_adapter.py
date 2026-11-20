@@ -45,6 +45,17 @@ class AdapterTests(unittest.TestCase):
         path.write_text(value)
         return path
 
+    def test_claude_status_keeps_custom_and_wraps_narwhal(self):
+        path = self.fixture('.claude/settings.json', json.dumps({'statusLine': {
+            'type': 'command', 'command': '/usr/local/bin/sbx-claude-hook claude-status'}}))
+        self.assertEqual(self.invoke('claude').returncode, 0)
+        self.assertEqual(json.loads(path.read_text())['statusLine']['command'],
+                         'python3 /opt/sbx-dev/claude-statusline.py')
+        custom = {'type': 'command', 'command': 'custom-status'}
+        path.write_text(json.dumps({'statusLine': custom}))
+        self.assertEqual(self.invoke('claude').returncode, 0)
+        self.assertEqual(json.loads(path.read_text())['statusLine'], custom)
+
     def test_json_preserves_official_gateway_and_other_settings(self):
         for agent, (name, key) in FORMATS.items():
             with self.subTest(agent=agent):

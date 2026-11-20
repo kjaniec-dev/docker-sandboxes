@@ -65,4 +65,5 @@ COPY --from=tools /opt/sbx-dev /opt/sbx-dev
 COPY --from=tools /out/ /
 COPY configure-agent.py /opt/sbx-dev/configure-agent.py
 COPY claude-statusline.py /opt/sbx-dev/claude-statusline.py
+COPY codex-statusline.py /opt/sbx-dev/codex-statusline.py
 COPY jq-guard.py /opt/sbx-dev/jq-guard.py

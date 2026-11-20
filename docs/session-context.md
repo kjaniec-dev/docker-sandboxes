@@ -5,21 +5,21 @@ This feature complements opt-in localhost ports. It does not change port permiss
 ## Claude Code
 
 The shared dev kit installs `/opt/sbx-dev/claude-statusline.py` and configures
-`~/.claude/settings.json` `statusLine` **only if the user has not already
-configured a statusline**. Existing settings are preserved. The script reads
-Claude's statusline JSON on stdin and prints the model, context-used percentage
-and context-window size when those fields are available. It never sends data
-to the host or to a network service.
+`~/.claude/settings.json` `statusLine` when no custom statusline is configured.
+The known Narwhal-only hook is wrapped so it still receives its payload while
+the terminal displays the model, current input-context tokens, context-window
+size and percentage when available. Other custom statuslines are preserved.
 
 It does **not** equate context occupancy with cumulative input/output tokens,
 provider quotas, or cost. Unknown values are omitted rather than estimated.
 
 ## Codex
 
-Use Codex's native session UI (for example `/status` where supported) to view
-context usage and model/limit information. No undocumented session JSON parser
-or cross-sandbox log scraper is installed. A future custom statusline should
-only be added after the installed Codex version's supported API is confirmed.
+The shared dev kit configures Codex's native status line with the model, context
+percentage, session tokens and context-window size when no custom status line
+or provider is configured. Codex's session token count is cumulative, while
+its context percentage describes the current window. `/statusline` can be used
+to customize the display.
 
 ## Manual checks (owner's Mac)
 
