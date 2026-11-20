@@ -15,6 +15,7 @@ passed fresh, restart and recreation infrastructure smoke on SBX 0.54.0;
 authenticated model requests were not checked. Existing sandboxes need
 recreation to use changed kits. The shared tooling now supplies fallback
 Node, npm, Go and Python only where the workload does not supply them.
+The Go fallback and prebuilt Go utilities use the pinned Go 1.27 toolchain.
 
 ## Official kit refresh, 2026-11-07
 
