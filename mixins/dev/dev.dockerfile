@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 # Build dependencies only; each workload retains its own Node and Go runtimes.
-FROM node:24-trixie-slim AS node
-FROM golang:1.26-trixie AS go
-FROM debian:trixie-slim AS tools
+FROM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS node
+FROM golang:1.26-trixie@sha256:cff05dd6b81c901f2e8249eb6f91c69a60451d0f12c26bfef08e476a85b32d4d AS go
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS tools
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl xz-utils unzip git python3 build-essential \
@@ -23,20 +23,20 @@ ENV PATH=/usr/local/go/bin:$PATH \
     UV_PYTHON_INSTALL_DIR=/opt/sbx-dev/python
 RUN mkdir -p /opt/sbx-dev/bin /opt/sbx-dev/java /opt/sbx-dev/maven \
  && case "$TARGETARCH" in arm64) java_arch=aarch64; uv_arch=aarch64 ;; amd64) java_arch=x64; uv_arch=x86_64 ;; *) exit 1 ;; esac \
- && curl -fsSL "https://api.adoptium.net/v3/binary/latest/25/ga/linux/$java_arch/jdk/hotspot/normal/eclipse" | tar -xz -C /opt/sbx-dev/java --strip-components=1 \
- && curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz | tar -xz -C /opt/sbx-dev/maven --strip-components=1 \
- && curl -fsSL https://services.gradle.org/distributions/gradle-9.1.0-bin.zip -o /tmp/gradle.zip \
+ && curl -fsSL "https://api.adoptium.net/v3/binary/version/jdk-25.0.5.1%2B2/linux/$java_arch/jdk/hotspot/normal/eclipse" | tar -xz -C /opt/sbx-dev/java --strip-components=1 \
+ && curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.10.1/binaries/apache-maven-3.10.1-bin.tar.gz | tar -xz -C /opt/sbx-dev/maven --strip-components=1 \
+ && curl -fsSL https://services.gradle.org/distributions/gradle-9.9.2-bin.zip -o /tmp/gradle.zip \
  && unzip -q /tmp/gradle.zip -d /opt/sbx-dev \
- && curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$TARGETARCH" -o /opt/sbx-dev/bin/yq \
+ && curl -fsSL "https://github.com/mikefarah/yq/releases/download/v4.54.3/yq_linux_$TARGETARCH" -o /opt/sbx-dev/bin/yq \
  && chmod +x /opt/sbx-dev/bin/yq \
- && curl -fsSL "https://github.com/astral-sh/uv/releases/latest/download/uv-$uv_arch-unknown-linux-gnu.tar.gz" | tar -xz -C /tmp \
+ && curl -fsSL "https://github.com/astral-sh/uv/releases/download/0.13.9/uv-$uv_arch-unknown-linux-gnu.tar.gz" | tar -xz -C /tmp \
  && cp "/tmp/uv-$uv_arch-unknown-linux-gnu/uv" /opt/sbx-dev/bin/uv \
- && /opt/sbx-dev/bin/uv python install 3.13 \
- && /opt/sbx-dev/bin/uv venv --python 3.13 /opt/sbx-dev/serena \
+ && /opt/sbx-dev/bin/uv python install 3.13.18 \
+ && /opt/sbx-dev/bin/uv venv --python 3.13.18 /opt/sbx-dev/serena \
  && /opt/sbx-dev/bin/uv pip install --python /opt/sbx-dev/serena/bin/python serena-agent==1.7.0 \
  && ln -s ../maven/bin/mvn /opt/sbx-dev/bin/mvn \
- && ln -s ../gradle-9.1.0/bin/gradle /opt/sbx-dev/bin/gradle
-RUN npm install -g pnpm@10 corepack @playwright/cli \
+ && ln -s ../gradle-9.9.2/bin/gradle /opt/sbx-dev/bin/gradle
+RUN npm install -g pnpm@10.34.9 corepack@0.36.0 @playwright/cli@0.1.25 \
  && node /opt/sbx-dev/npm/lib/node_modules/@playwright/cli/node_modules/playwright/cli.js install chromium \
  && npm cache clean --force
 # Pinned to versions that build with the golang:1.26 base; @latest pulls Go 1.27 toolchains and exhausts builder disk.
@@ -51,6 +51,10 @@ RUN export GOBIN=/opt/sbx-dev/bin CGO_ENABLED=0 GOTOOLCHAIN=local \
  && go clean -cache \
  && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 \
  && go clean -cache -modcache
+RUN mkdir -p /opt/sbx-dev/node/bin /opt/sbx-dev/node/lib/node_modules \
+ && cp /usr/local/bin/node /opt/sbx-dev/node/bin/node \
+ && cp -a /usr/local/lib/node_modules/npm /opt/sbx-dev/node/lib/node_modules/npm \
+ && cp -a /usr/local/go /opt/sbx-dev/go
 COPY export-tools.py /tmp/export-tools.py
 RUN python3 /tmp/export-tools.py \
  && mkdir -p /out/usr/local/bin \

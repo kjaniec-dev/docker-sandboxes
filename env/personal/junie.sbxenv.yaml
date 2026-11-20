@@ -5,8 +5,8 @@ args:
     default: /home/agent/.junie/skills
 
 kits:
-  # Official sbx workload 26.9.21, resolved 2026-11-07.
-  - docker.io/sbx/junie@sha256:e5e4c0a94b9e859d979641af4a7dc001b584fa0a2bd6cc4e898298f54b7d8e36
+  # Official sbx workload 26.9.21, resolved 2026-11-20.
+  - docker.io/sbx/junie@sha256:60407982c03219d1c00f749924ce2ef4d4940a7942c976c1efb3130086fe5eed
   - source: ../../workloads/junie-dev
 
 env:

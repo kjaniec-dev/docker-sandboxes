@@ -246,8 +246,9 @@ observations, current evidence limits, removal conditions and probes for these i
 
 The shared mixin supplies Java 25, Maven, Gradle, Python/uv, Serena, Go development utilities,
 pnpm/corepack, Playwright CLI/Chromium, and shell/search/database tools.
-It exports tools and their scoped dependencies without replacing the workload's operating system,
-Node or Go runtimes. A broken workload uv/uvx is replaced with the baked working binary only when its
+It exports tools and their scoped dependencies without replacing the workload's operating system.
+Node, npm, Go and Python fallbacks are enabled only when the workload lacks them; existing runtimes
+remain in use. A broken workload uv/uvx is replaced with the baked working binary only when its
 version probe fails.
 
 Ripgrep comes from each workload's base image (`/usr/bin/rg`); the shared mixin does not

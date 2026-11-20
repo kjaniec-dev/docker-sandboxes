@@ -1,12 +1,12 @@
 schemaVersion: "1"
-agent: sbx-kit-codex
+agent: codex
 args:
   skillsPath:
     default: /home/agent/.agents/skills
 
 kits:
-  # Newest numbered official release 0.166.0, resolved 2026-11-07; latest lags.
-  - docker/sbx-kit-codex@sha256:179f79321d55be5c826e0aa4531f2389193bcc3f5785ca1c8ddef95d995e7d0c
+  # Official 0.171.0 resolved 2026-11-20.
+  - docker.io/sbx/codex@sha256:dacccb02ee6974591e52b6440064713a47e160516074bc00db5537547cb77212
 
 env:
   SBX_AGENT_KIND: codex
