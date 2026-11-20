@@ -13,8 +13,8 @@ args:
 
 kits:
   - ../../workloads/claude-dev
-  # Official 2.1.314 resolved 2026-11-07.
-  - docker/sbx-kit-claude-mixin@sha256:23c168d27d2a4779163bd2d7427e2ab6ce45adab5f99b2dd6da9cb6f2991cbbe
+  # Official 2.1.329 resolved 2026-11-20.
+  - sbx/claude-mixin@sha256:d5415c98ea09007e5a38a4381b2c8081e6fa75d81468c920efcaa81599ee87a6
   - ../../mixins/vertex
 
 env:
