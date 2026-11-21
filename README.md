@@ -182,6 +182,11 @@ with the same files, name and arguments
 shown by the launcher, then launch again. Removing a sandbox loses its sandbox-local session state;
 the bind-mounted project remains on the host.
 
+The newer official Codex kit uses a different agent identity. Its launcher uses
+the deterministic suffix `-kit` to create a separate sandbox instead of taking
+over an older `sbx-kit-codex` sandbox. The older sandbox and its sessions remain
+available through `sbx run --name <old-name>`.
+
 Existing pre-rewrite sandboxes also require recreation to receive this composition. Their automatic
 migration or deletion is not part of the launcher.
 

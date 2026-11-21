@@ -155,6 +155,9 @@ digest="$(printf '%s' "$repo_root" | shasum -a 256 | awk '{print substr($1,1,8)}
 prefix="$agent"
 [[ "$profile" == client ]] && prefix="client-$agent"
 name="$prefix-$slug-$digest"
+# The official sbx/codex workload has a different agent identity from the
+# previous sbx-kit-codex workload. Keep their sandboxes and sessions separate.
+[[ "$profile:$agent" != personal:codex ]] || name="${name}-kit"
 
 agent_env="$ROOT/env/$profile/$agent.sbxenv.yaml"
 common_env="$ROOT/env/common.sbxenv.yaml"
