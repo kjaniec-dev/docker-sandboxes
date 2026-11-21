@@ -52,6 +52,13 @@ for command in claude-sbx codex-sbx opencode-sbx agy-sbx junie-sbx copilot-sbx; 
 done
 ```
 
+The installed checkout is the default when launching from other projects. When
+the current directory is inside this repository or one of its registered
+`.worktrees/`, the launcher uses that checkout's code and environment files.
+This permits testing a worktree without changing installed links; returning to
+the main checkout uses that checkout again. Launchers execute host-side code,
+so use this automatic selection only with worktrees whose contents you trust.
+
 ## Client profile setup (Vertex Claude)
 
 Client Claude needs a few host inputs before the first launch. Without them `claude-sbx` stops at
@@ -83,7 +90,8 @@ approved regions; see [client Vertex configuration](docs/client-vertex.md).
 
 ## Launch an agent
 
-Run inside the project's main Git checkout. Add `.worktrees/` to its Git ignore rules first.
+Run inside the project's main Git checkout or one of its registered `.worktrees/`.
+Add `.worktrees/` to its Git ignore rules first.
 
 The launcher audits local Git configuration and hooks before launch and on exit. This detects
 command-bearing metadata but does not isolate writable `.git` from concurrent host Git or shell
