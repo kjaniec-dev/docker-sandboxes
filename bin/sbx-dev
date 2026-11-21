@@ -13,6 +13,15 @@ resolve_self() {
 
 SELF="$(resolve_self)"
 ROOT="$(cd -P "$(dirname "$SELF")/.." >/dev/null 2>&1 && pwd)"
+command_name="$(basename "$0")"
+selected_root="$(python3 "$ROOT/bin/select-checkout.py" "$ROOT")"
+if [[ "$selected_root" != "$ROOT" ]]; then
+  [[ -x "$selected_root/bin/$command_name" ]] || {
+    echo "sbx-dev: launcher is missing from selected checkout: $selected_root" >&2
+    exit 1
+  }
+  exec "$selected_root/bin/$command_name" "$@"
+fi
 
 usage() {
   cat >&2 <<'EOF'
@@ -31,7 +40,6 @@ profile:
 EOF
 }
 
-command_name="$(basename "$0")"
 case "$command_name" in
   claude-sbx) agent=claude ;;
   codex-sbx) agent=codex ;;
