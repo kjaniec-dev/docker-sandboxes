@@ -245,7 +245,7 @@ elif args[:1] != ["run"]:
         self.assertEqual(self.launch().returncode, 0)
         argv = self.operation(["env", "run"])["argv"]
         name = argv[argv.index("--name") + 1]
-        self.assertRegex(name, r"^codex-a-project-one-[0-9a-f]{8}$")
+        self.assertRegex(name, r"^codex-a-project-one-[0-9a-f]{8}-kit$")
         self.assertEqual(self.operation(["run"])["argv"], ["run", "--name", name])
         self.reset_log()
         self.assertEqual(self.launch().returncode, 0)
@@ -259,7 +259,7 @@ elif args[:1] != ["run"]:
         result = self.launch(cwd=other)
         self.assertEqual(result.returncode, 0, result.stderr)
         argv = self.operation(["env", "run"])["argv"]
-        self.assertRegex(argv[argv.index("--name") + 1], r"^codex-project-[0-9a-f]{8}$")
+        self.assertRegex(argv[argv.index("--name") + 1], r"^codex-project-[0-9a-f]{8}-kit$")
 
     def test_same_basename_in_different_paths_has_distinct_names(self):
         self.assertEqual(self.launch().returncode, 0)
